@@ -6,16 +6,17 @@ const Client = require("../models/Client");
 const Admin = require("../models/Admin");
 const sendEmail = require("../utils/sendEmail");
 const crypto = require("crypto");
-
+const path = require("path");
+const fs = require("fs");
 
 /// signup controller
 
 exports.signup = async (req, res) => {
     try {
-        const { email, password, role } = req.body;
+        const { name, email, password, role } = req.body;
 
         /// check any field is blank or not
-        if (!email || !password || !role) {
+        if (!name || !name.trim() || !email || !password || !role) {
             return res.status(400).json({ message: "All fields are required" });
         }
 
@@ -30,6 +31,7 @@ exports.signup = async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const user = await User.create({
+            name: name.trim(),
             email,
             passwordHash: hashedPassword,
             role,
@@ -61,12 +63,16 @@ exports.signup = async (req, res) => {
 /// login controller
 exports.login = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password, expectedRole } = req.body;
 
         /// check user exists or not
         const user = await User.findOne({ email });
         if (!user) {
             return res.status(404).json({ message: "User not found" });
+        }
+
+        if (expectedRole && user.role !== expectedRole) {
+            return res.status(403).json({ message: `Please use the ${user.role} login option` });
         }
 
         /// compare password
@@ -97,6 +103,58 @@ exports.login = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ message: "server error" });
+    }
+};
+
+exports.uploadProfileImage = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: "Image is required" });
+        }
+
+        const user = await User.findById(req.user.userId);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        user.profileImage = `/uploads/profile-images/${req.file.filename}`;
+        await user.save();
+
+        res.json({
+            message: "Profile image updated",
+            profileImage: user.profileImage,
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+exports.removeProfileImage = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        const existingPath = user.profileImage;
+        user.profileImage = "";
+        await user.save();
+
+        if (existingPath && typeof existingPath === "string" && existingPath.startsWith("/uploads/profile-images/")) {
+            const filename = path.basename(existingPath);
+            const filePath = path.join(__dirname, "..", "..", "uploads", "profile-images", filename);
+            try {
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                }
+            } catch (e) {
+                // ignore file deletion errors
+            }
+        }
+
+        res.json({ message: "Profile image removed", profileImage: "" });
+    } catch (error) {
+        res.status(500).json({ message: "Server error" });
     }
 };
 

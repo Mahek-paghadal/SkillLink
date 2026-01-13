@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { removeToken } from "../utils/auth";
-import { getProfile, logoutUser } from "../api/authApi";
-import ThemeToggle from "../components/ThemeToggle";
+import { getProfile } from "../api/authApi";
 
 const ClientDashboard = () => {
     const [user, setUser] = useState(null);
@@ -24,17 +22,6 @@ const ClientDashboard = () => {
         fetchProfile();
     }, [navigate]);
 
-    const handleLogout = async () => {
-        try {
-            await logoutUser();
-        } catch (error) {
-            console.error("Logout error:", error);
-        } finally {
-            removeToken();
-            window.location.href = "/";
-        }
-    };
-
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-bgLight dark:bg-darkBg">
@@ -45,27 +32,11 @@ const ClientDashboard = () => {
 
     return (
         <div className="min-h-screen bg-bgLight dark:bg-darkBg">
-            {/* Header */}
-            <header className="bg-inputBg dark:bg-darkCard shadow-sm">
-                <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-                    <h1 className="text-2xl font-bold text-textDark dark:text-darkText">SkillLink - Client Dashboard</h1>
-                    <div className="flex items-center gap-4">
-                        <ThemeToggle />
-                        <button
-                            onClick={handleLogout}
-                            className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-secondary transition"
-                        >
-                            Logout
-                        </button>
-                    </div>
-                </div>
-            </header>
-
             <div className="container mx-auto px-4 py-8">
                 {/* Welcome Card */}
                 <div className="bg-inputBg dark:bg-darkCard rounded-2xl shadow-lg p-8 mb-6">
                     <h2 className="text-3xl font-bold text-textDark dark:text-darkText mb-2">
-                        Welcome, {user?.email}!
+                        Welcome to your dashboard
                     </h2>
                     <p className="text-textDark/70 dark:text-darkText/70">Client Account</p>
                 </div>

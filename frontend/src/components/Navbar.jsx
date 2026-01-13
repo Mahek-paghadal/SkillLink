@@ -1,0 +1,86 @@
+import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import ThemeToggle from "./ThemeToggle";
+import { isAuthenticated, getUserRole } from "../utils/auth";
+import { getProfile } from "../api/authApi";
+
+const Navbar = () => {
+  const [authed, setAuthed] = useState(isAuthenticated());
+  const [role, setRole] = useState(authed ? getUserRole() : null);
+  const [profileImage, setProfileImage] = useState("");
+
+  const apiBase = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
+  const backendOrigin = apiBase.replace(/\/api\/?$/, "");
+  const profileImageUrl = profileImage ? `${backendOrigin}${profileImage}` : "";
+
+  useEffect(() => {
+    const handler = async () => {
+      const nextAuthed = isAuthenticated();
+      setAuthed(nextAuthed);
+      setRole(nextAuthed ? getUserRole() : null);
+
+      if (!nextAuthed) {
+        setProfileImage("");
+        return;
+      }
+
+      try {
+        const res = await getProfile();
+        setProfileImage(res.data?.profileImage || "");
+      } catch (e) {
+        setProfileImage("");
+      }
+    };
+    handler();
+    window.addEventListener('auth-changed', handler);
+    window.addEventListener('profile-updated', handler);
+    return () => {
+      window.removeEventListener('auth-changed', handler);
+      window.removeEventListener('profile-updated', handler);
+    };
+  }, []);
+
+  const getHomePath = () => {
+    if (!authed) return "/";
+    if (role === "student") return "/student/dashboard";
+    if (role === "client") return "/client/dashboard";
+    if (role === "admin") return "/admin/dashboard";
+    return "/";
+  };
+
+  return (
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-inputBg/90 dark:bg-darkCard/90 backdrop-blur border-b border-light/50 dark:border-darkBorder">
+      <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+        <Link to={getHomePath()} className="flex items-baseline gap-1">
+          <span className="text-2xl font-extrabold tracking-tight text-primary">Skill</span>
+          <span className="text-2xl font-extrabold tracking-tight text-textDark dark:text-darkText">Link</span>
+        </Link>
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          {authed && (
+            <Link
+              to="/profile"
+              className="w-9 h-9 rounded-full bg-accent/30 dark:bg-darkBorder flex items-center justify-center hover:ring-2 ring-primary transition"
+              title="Profile"
+            >
+              {profileImageUrl ? (
+                <img
+                  src={profileImageUrl}
+                  alt="Profile"
+                  className="w-full h-full rounded-full object-cover"
+                />
+              ) : (
+                <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              )}
+            </Link>
+          )}
+        </div>
+      </div>
+    </nav>
+  );
+};
+
+export default Navbar;

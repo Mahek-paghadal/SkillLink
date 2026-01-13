@@ -8,6 +8,8 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { isAuthenticated, getUserRole } from "./utils/auth";
+import Navbar from "./components/Navbar";
+import Profile from "./pages/Profile";
 
 function App() {
   const getRedirectPath = () => {
@@ -22,6 +24,8 @@ function App() {
   return (
     <ThemeProvider>
       <Router>
+        <Navbar />
+        <main className="pt-16">
         <Routes>
         {/* Public Routes */}
         <Route
@@ -73,9 +77,20 @@ function App() {
           }
         />
 
+        {/* Protected Profile Route */}
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute allowedRoles={["student", "client", "admin"]}>
+              <Profile />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Fallback - redirect based on role */}
         <Route path="*" element={<Navigate to={getRedirectPath()} replace />} />
         </Routes>
+        </main>
       </Router>
     </ThemeProvider>
   );

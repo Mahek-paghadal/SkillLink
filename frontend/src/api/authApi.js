@@ -55,4 +55,14 @@ export const forgotPassword = (data) =>
 export const resetPassword = (data) =>
     API.post("/auth/reset-password", data);
 
+/// upload profile image
+export const uploadProfileImage = (formData) =>
+    API.post("/auth/profile-image", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+    });
+
+/// remove profile image
+export const removeProfileImage = () =>
+    API.delete("/auth/profile-image");
+
 export default API;

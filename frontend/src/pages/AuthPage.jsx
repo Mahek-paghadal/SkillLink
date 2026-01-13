@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { loginUser, signupUser } from "../api/authApi";
-import { setToken } from "../utils/auth";
-import ThemeToggle from "../components/ThemeToggle";
+import { setToken, isAuthenticated, getUserRole } from "../utils/auth";
 
 const AuthPage = () => {
     const navigate = useNavigate();
@@ -12,7 +11,19 @@ const AuthPage = () => {
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
+    // If already authenticated, redirect away from auth page (fix back nav and direct access)
+    useEffect(() => {
+        if (isAuthenticated()) {
+            const role = getUserRole();
+            if (role === "student") navigate("/student/dashboard", { replace: true });
+            else if (role === "client") navigate("/client/dashboard", { replace: true });
+            else if (role === "admin") navigate("/admin/dashboard", { replace: true });
+            else navigate("/", { replace: true });
+        }
+    }, [navigate]);
+
     const [form, setForm] = useState({
+        name: "",
         email: "",
         password: "",
         confirmPassword: "",
@@ -90,7 +101,7 @@ const AuthPage = () => {
         setLoading(true);
 
         // Validation
-        if (!form.email || !form.password) {
+        if (!form.email || !form.password || (!isLogin && !form.name)) {
             setError("Please fill in all fields");
             setLoading(false);
             return;
@@ -114,6 +125,7 @@ const AuthPage = () => {
                 const res = await loginUser({
                     email: form.email,
                     password: form.password,
+                    expectedRole: role,
                 });
 
                 if (res.data.token) {
@@ -121,17 +133,18 @@ const AuthPage = () => {
                     // Navigate based on role
                     const userRole = res.data.role;
                     if (userRole === "student") {
-                        navigate("/student/dashboard");
+                        navigate("/student/dashboard", { replace: true });
                     } else if (userRole === "client") {
-                        navigate("/client/dashboard");
+                        navigate("/client/dashboard", { replace: true });
                     } else if (userRole === "admin") {
-                        navigate("/admin/dashboard");
+                        navigate("/admin/dashboard", { replace: true });
                     } else {
-                        navigate("/dashboard");
+                        navigate("/dashboard", { replace: true });
                     }
                 }
             } else {
                 const res = await signupUser({
+                    name: form.name,
                     email: form.email,
                     password: form.password,
                     role,
@@ -142,17 +155,18 @@ const AuthPage = () => {
                     const loginRes = await loginUser({
                         email: form.email,
                         password: form.password,
+                        expectedRole: role,
                     });
 
                     if (loginRes.data.token) {
                         setToken(loginRes.data.token);
                         const userRole = loginRes.data.role;
                         if (userRole === "student") {
-                            navigate("/student/dashboard");
+                            navigate("/student/dashboard", { replace: true });
                         } else if (userRole === "client") {
-                            navigate("/client/dashboard");
+                            navigate("/client/dashboard", { replace: true });
                         } else {
-                            navigate("/dashboard");
+                            navigate("/dashboard", { replace: true });
                         }
                     }
                 }
@@ -165,7 +179,7 @@ const AuthPage = () => {
     };
 
     return (
-        <div className="min-h-screen bg-bgLight dark:bg-darkBg flex items-center justify-center p-4">
+        <div className="min-h-[calc(100vh-64px)] bg-bgLight dark:bg-darkBg flex items-start justify-center px-4 pt-6 pb-8">
             <div className="bg-inputBg dark:bg-darkCard rounded-2xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col md:flex-row">
                 {/* Left Panel - Role-specific Features */}
                 <div className="w-full md:w-1/2 bg-gradient-to-br from-primary to-secondary dark:from-primary/80 dark:to-secondary/80 p-8 md:p-12 flex flex-col justify-center text-white relative min-h-[500px] md:min-h-auto">
@@ -197,10 +211,6 @@ const AuthPage = () => {
 
                 {/* Right Panel - Auth Form */}
                 <div className="w-full md:w-1/2 p-8 md:p-12 flex flex-col justify-center bg-inputBg dark:bg-darkCard relative">
-                    {/* Theme Toggle */}
-                    <div className="absolute top-4 right-4">
-                        <ThemeToggle />
-                    </div>
                     
                     {/* Role Selection */}
                     <div className="flex gap-2 mb-6">
@@ -251,6 +261,22 @@ const AuthPage = () => {
 
                     {/* Form */}
                     <form onSubmit={handleSubmit} className="space-y-4">
+                        {!isLogin && (
+                            <div>
+                                <label className="block text-sm font-medium text-textDark dark:text-darkText mb-2">
+                                    Name
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText placeholder:text-textDark/50 dark:placeholder:text-darkText/50"
+                                    placeholder="Your Name"
+                                    value={form.name}
+                                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                                />
+                            </div>
+                        )}
+
                         <div>
                             <label className="block text-sm font-medium text-textDark dark:text-darkText mb-2">
                                 Email Address
@@ -342,7 +368,7 @@ const AuthPage = () => {
                                 onClick={() => {
                                     setIsLogin(!isLogin);
                                     setError("");
-                                    setForm({ email: "", password: "", confirmPassword: "" });
+                                    setForm({ name: "", email: "", password: "", confirmPassword: "" });
                                 }}
                                 className="text-primary hover:text-secondary font-medium"
                             >

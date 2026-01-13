@@ -3,6 +3,7 @@ import { jwtDecode } from 'jwt-decode';
 
 export const setToken = (token) => {
     localStorage.setItem('token', token);
+    window.dispatchEvent(new Event('auth-changed'));
 };
 
 export const getToken = () => {
@@ -11,6 +12,7 @@ export const getToken = () => {
 
 export const removeToken = () => {
     localStorage.removeItem('token');
+    window.dispatchEvent(new Event('auth-changed'));
 };
 
 export const isAuthenticated = () => {
