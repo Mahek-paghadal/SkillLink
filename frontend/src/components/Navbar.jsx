@@ -1,10 +1,11 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
 import { isAuthenticated, getUserRole } from "../utils/auth";
 import { getProfile } from "../api/authApi";
 
 const Navbar = () => {
+  const location = useLocation();
   const [authed, setAuthed] = useState(isAuthenticated());
   const [role, setRole] = useState(authed ? getUserRole() : null);
   const [profileImage, setProfileImage] = useState("");
@@ -48,6 +49,10 @@ const Navbar = () => {
     return "/";
   };
 
+  const isAuthPage = ["/auth", "/forgot-password", "/reset-password"].includes(
+    location.pathname
+  );
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-inputBg/90 dark:bg-darkCard/90 backdrop-blur border-b border-light/50 dark:border-darkBorder">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
@@ -55,9 +60,41 @@ const Navbar = () => {
           <span className="text-2xl font-extrabold tracking-tight text-primary">Skill</span>
           <span className="text-2xl font-extrabold tracking-tight text-textDark dark:text-darkText">Link</span>
         </Link>
+        {!isAuthPage && !authed && (
+          <div className="hidden md:flex items-center gap-6 text-sm text-textDark/70 dark:text-darkText/70">
+            <a href="/#home" className="hover:text-primary transition">Home</a>
+            <a href="/#job-picks" className="hover:text-primary transition">Find Tasks</a>
+            <a href="/#why" className="hover:text-primary transition">About Us</a>
+            <a href="/#services" className="hover:text-primary transition">Services</a>
+          </div>
+        )}
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          {authed && (
+          {!authed && !isAuthPage && (
+            <>
+              <Link
+                to="/auth?mode=login"
+                className="text-sm font-semibold text-textDark dark:text-darkText hover:text-primary transition"
+              >
+                Login
+              </Link>
+              <Link
+                to="/auth?mode=signup"
+                className="text-sm font-semibold bg-primary text-white px-4 py-2 rounded-full hover:bg-secondary transition"
+              >
+                Sign Up
+              </Link>
+            </>
+          )}
+          {authed && !isAuthPage && (
+            <Link
+              to={getHomePath()}
+              className="text-sm font-semibold bg-primary text-white px-4 py-2 rounded-full hover:bg-secondary transition"
+            >
+              Dashboard
+            </Link>
+          )}
+          {authed && !isAuthPage && (
             <Link
               to="/profile"
               className="w-9 h-9 rounded-full bg-accent/30 dark:bg-darkBorder flex items-center justify-center hover:ring-2 ring-primary transition"

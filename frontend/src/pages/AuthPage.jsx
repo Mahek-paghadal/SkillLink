@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { loginUser, signupUser } from "../api/authApi";
 import { setToken, isAuthenticated, getUserRole } from "../utils/auth";
 
 const AuthPage = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [isLogin, setIsLogin] = useState(true);
     const [role, setRole] = useState("student");
     const [error, setError] = useState("");
@@ -21,6 +22,12 @@ const AuthPage = () => {
             else navigate("/", { replace: true });
         }
     }, [navigate]);
+
+    useEffect(() => {
+        const mode = searchParams.get("mode");
+        if (mode === "signup") setIsLogin(false);
+        if (mode === "login") setIsLogin(true);
+    }, [searchParams]);
 
     const [form, setForm] = useState({
         name: "",

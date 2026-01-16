@@ -2,8 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
-const swaggerUi = require('swagger-ui-express');
-const { swaggerSpec } = require('./docs/swagger');
 
 
 const connectDB = require("./config/db");
@@ -19,17 +17,11 @@ app.use(express.json());
 
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-// Swagger docs
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  swaggerOptions: { persistAuthorization: true }
-}));
-app.get('/api-docs.json', (req, res) => {
-  res.json(swaggerSpec);
-});
-
 /// Routes
 app.use("/api/auth" , require("./routes/auth.routes"));
 app.use("/api/admin", require("./routes/admin.routes"));
+app.use("/api/landing", require("./routes/landing.routes"));
+app.use("/api/student", require("./routes/student.routes"));
 
 
 /// health check

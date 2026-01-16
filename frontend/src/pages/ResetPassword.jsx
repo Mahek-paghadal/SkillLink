@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { resetPassword } from "../api/authApi";
-import ThemeToggle from "../components/ThemeToggle";
 
 const ResetPassword = () => {
     const [searchParams] = useSearchParams();
@@ -58,9 +57,6 @@ const ResetPassword = () => {
     return (
         <div className="min-h-screen bg-bgLight dark:bg-darkBg flex items-center justify-center p-4">
             <div className="bg-inputBg dark:bg-darkCard rounded-2xl shadow-2xl w-full max-w-md p-8 relative">
-                <div className="absolute top-4 right-4">
-                    <ThemeToggle />
-                </div>
                 <h2 className="text-3xl font-bold text-textDark dark:text-darkText mb-2">Reset Password</h2>
                 <p className="text-textDark/70 dark:text-darkText/70 mb-6">Enter your new password.</p>
 

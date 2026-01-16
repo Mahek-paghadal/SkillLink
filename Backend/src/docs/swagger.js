@@ -66,6 +66,34 @@ const options = {
             },
           },
         },
+
+        JobPick: {
+          type: 'object',
+          required: ['title', 'company', 'location', 'employmentType', 'level'],
+          properties: {
+            title: { type: 'string', example: 'React Developer' },
+            company: { type: 'string', example: 'SkillLink Labs' },
+            location: { type: 'string', example: 'Remote' },
+            employmentType: { type: 'string', example: 'Full-time' },
+            level: { type: 'string', example: 'Mid-level' },
+            salary: { type: 'string', example: '₹6-10 LPA' },
+            tags: { type: 'array', items: { type: 'string' }, example: ['Remote', 'React'] },
+            logoUrl: { type: 'string', example: '/uploads/profile-images/logo.png' },
+          },
+        },
+
+        JobOpportunity: {
+          type: 'object',
+          required: ['role', 'company', 'location'],
+          properties: {
+            role: { type: 'string', example: 'UI/UX Designer' },
+            company: { type: 'string', example: 'Creative Studio' },
+            location: { type: 'string', example: 'Bengaluru' },
+            openings: { type: 'integer', example: 3 },
+            employmentType: { type: 'string', example: 'Internship' },
+            logoUrl: { type: 'string', example: '/uploads/profile-images/logo.png' },
+          },
+        },
       },
     },
   },
@@ -203,6 +231,60 @@ options.definition.paths = {
         200: { description: 'Counts of students, clients, admins' },
         401: { description: 'Unauthorized' },
         403: { description: 'Forbidden' },
+      },
+    },
+  },
+
+  '/api/landing/job-picks': {
+    get: {
+      tags: ['Landing'],
+      summary: 'Get job picks for landing page',
+      responses: {
+        200: { description: 'List of job picks' },
+        500: { description: 'Server error' },
+      },
+    },
+    post: {
+      tags: ['Landing'],
+      summary: 'Add a job pick',
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/JobPick' },
+          },
+        },
+      },
+      responses: {
+        201: { description: 'Job pick created' },
+        400: { description: 'Validation error' },
+      },
+    },
+  },
+
+  '/api/landing/job-opportunities': {
+    get: {
+      tags: ['Landing'],
+      summary: 'Get latest job opportunities',
+      responses: {
+        200: { description: 'List of job opportunities' },
+        500: { description: 'Server error' },
+      },
+    },
+    post: {
+      tags: ['Landing'],
+      summary: 'Add a job opportunity',
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/JobOpportunity' },
+          },
+        },
+      },
+      responses: {
+        201: { description: 'Job opportunity created' },
+        400: { description: 'Validation error' },
       },
     },
   },

@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import AuthPage from "./pages/AuthPage";
+import LandingPage from "./pages/LandingPage";
 import StudentDashboard from "./pages/StudentDashboard";
 import ClientDashboard from "./pages/ClientDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -28,8 +29,9 @@ function App() {
         <main className="pt-16">
         <Routes>
         {/* Public Routes */}
+        <Route path="/" element={<LandingPage />} />
         <Route
-          path="/"
+          path="/auth"
           element={
             isAuthenticated() ? <Navigate to={getRedirectPath()} replace /> : <AuthPage />
           }
