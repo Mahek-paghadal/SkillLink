@@ -18,7 +18,7 @@ const AuthPage = () => {
             const role = getUserRole();
             if (role === "student") navigate("/student/dashboard", { replace: true });
             else if (role === "client") navigate("/client/dashboard", { replace: true });
-            else if (role === "admin") navigate("/admin/dashboard", { replace: true });
+            else if (role === "admin") navigate("/", { replace: true });
             else navigate("/", { replace: true });
         }
     }, [navigate]);
@@ -144,7 +144,7 @@ const AuthPage = () => {
                     } else if (userRole === "client") {
                         navigate("/client/dashboard", { replace: true });
                     } else if (userRole === "admin") {
-                        navigate("/admin/dashboard", { replace: true });
+                        navigate("/", { replace: true });
                     } else {
                         navigate("/dashboard", { replace: true });
                     }
@@ -172,6 +172,8 @@ const AuthPage = () => {
                             navigate("/student/dashboard", { replace: true });
                         } else if (userRole === "client") {
                             navigate("/client/dashboard", { replace: true });
+                        } else if (userRole === "admin") {
+                            navigate("/", { replace: true });
                         } else {
                             navigate("/dashboard", { replace: true });
                         }

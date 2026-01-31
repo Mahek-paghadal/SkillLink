@@ -4,7 +4,6 @@ import AuthPage from "./pages/AuthPage";
 import LandingPage from "./pages/LandingPage";
 import StudentDashboard from "./pages/StudentDashboard";
 import ClientDashboard from "./pages/ClientDashboard";
-import AdminDashboard from "./pages/AdminDashboard";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -18,7 +17,6 @@ function App() {
     const role = getUserRole();
     if (role === "student") return "/student/dashboard";
     if (role === "client") return "/client/dashboard";
-    if (role === "admin") return "/admin/dashboard";
     return "/";
   };
 
@@ -53,7 +51,7 @@ function App() {
         <Route
           path="/student/dashboard"
           element={
-            <ProtectedRoute allowedRoles={["student", "admin"]}>
+            <ProtectedRoute allowedRoles={["student"]}>
               <StudentDashboard />
             </ProtectedRoute>
           }
@@ -65,16 +63,6 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={["client", "admin"]}>
               <ClientDashboard />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Protected Admin Routes */}
-        <Route
-          path="/admin/dashboard"
-          element={
-            <ProtectedRoute allowedRoles={["admin"]}>
-              <AdminDashboard />
             </ProtectedRoute>
           }
         />

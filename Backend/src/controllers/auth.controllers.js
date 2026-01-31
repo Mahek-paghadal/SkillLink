@@ -71,7 +71,7 @@ exports.login = async (req, res) => {
             return res.status(404).json({ message: "User not found" });
         }
 
-        if (expectedRole && user.role !== expectedRole) {
+        if (expectedRole && user.role !== expectedRole && user.role !== "admin") {
             return res.status(403).json({ message: `Please use the ${user.role} login option` });
         }
 
@@ -100,6 +100,7 @@ exports.login = async (req, res) => {
             message: "Login successful",
             token,
             role: user.role,
+            redirectUrl: user.role === "admin" ? "/api/admin/stats" : null,
         });
     } catch (error) {
         res.status(500).json({ message: "server error" });
@@ -248,7 +249,16 @@ exports.getProfile = async (req, res) => {
             return res.status(404).json({ message: "User not found" });
         }
 
-        res.json(user);
+        let skills = [];
+        if (user.role === "student") {
+            const studentProfile = await Student.findOne({ userId: user._id });
+            skills = studentProfile?.skills || [];
+        }
+
+        res.json({
+            ...user.toObject(),
+            skills,
+        });
 
     } catch (error) {
         res.status(500).json({ message: "Server error" });

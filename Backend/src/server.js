@@ -22,6 +22,7 @@ app.use("/api/auth" , require("./routes/auth.routes"));
 app.use("/api/admin", require("./routes/admin.routes"));
 app.use("/api/landing", require("./routes/landing.routes"));
 app.use("/api/student", require("./routes/student.routes"));
+app.use("/api/jobs", require("./routes/job.routes"));
 
 
 /// health check

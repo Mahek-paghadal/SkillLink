@@ -3,10 +3,34 @@ import { Link, useNavigate } from "react-router-dom";
 import AOS from "aos";
 import "aos/dist/aos.css";
 import { getStudentOverview } from "../api/studentApi";
+import {
+    getJobs,
+    applyToJob,
+    getStudentApplications,
+    getStudentHistory,
+    completeApplication,
+    archiveStudentApplication,
+    clearStudentHistory,
+} from "../api/jobApi";
 
 const StudentDashboard = () => {
     const [overview, setOverview] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [jobs, setJobs] = useState([]);
+    const [applyJobId, setApplyJobId] = useState(null);
+    const [applyForm, setApplyForm] = useState({
+        fullName: "",
+        email: "",
+        phone: "",
+        coverMessage: "",
+        experience: "",
+        resumeLink: "",
+    });
+    const [applyLoading, setApplyLoading] = useState(false);
+    const [applyError, setApplyError] = useState("");
+    const [applySuccess, setApplySuccess] = useState("");
+    const [applications, setApplications] = useState([]);
+    const [history, setHistory] = useState([]);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -22,6 +46,10 @@ const StudentDashboard = () => {
             try {
                 const res = await getStudentOverview();
                 setOverview(res.data);
+                if (!res.data?.hasSkills) {
+                    navigate("/profile", { replace: true });
+                    return;
+                }
             } catch (error) {
                 console.error("Failed to fetch student overview:", error);
                 navigate("/");
@@ -30,7 +58,34 @@ const StudentDashboard = () => {
                 setTimeout(() => AOS.refresh(), 50);
             }
         };
+        const fetchJobs = async () => {
+            try {
+                const res = await getJobs();
+                setJobs(res.data || []);
+            } catch (error) {
+                console.error("Failed to fetch jobs:", error);
+            }
+        };
+        const fetchApplications = async () => {
+            try {
+                const res = await getStudentApplications();
+                setApplications(res.data || []);
+            } catch (error) {
+                console.error("Failed to fetch applications:", error);
+            }
+        };
+        const fetchHistory = async () => {
+            try {
+                const res = await getStudentHistory();
+                setHistory(res.data || []);
+            } catch (error) {
+                console.error("Failed to fetch history:", error);
+            }
+        };
         fetchOverview();
+        fetchJobs();
+        fetchApplications();
+        fetchHistory();
     }, [navigate]);
 
     if (loading) {
@@ -139,11 +194,11 @@ const StudentDashboard = () => {
                     ))}
                 </div>
 
-                {/* Recommended Tasks */}
+                {/* Recommended Tasks (from skills) */}
                 <div className="bg-inputBg dark:bg-darkCard rounded-3xl shadow-lg p-8 border border-light/60 dark:border-darkBorder mb-8" data-aos="fade-up">
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-2xl font-bold text-textDark dark:text-darkText">Recommended micro tasks</h3>
-                        <Link to="/auth?mode=signup" className="text-primary font-semibold text-sm">View all</Link>
+                        <Link to="/profile" className="text-primary font-semibold text-sm">Update skills</Link>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {recommendations.map((job, index) => (
@@ -165,6 +220,263 @@ const StudentDashboard = () => {
                                 <div className="mt-4 flex items-center justify-between">
                                     <div className="text-primary font-semibold text-sm">{job.salary || "Budget suggested by ML"}</div>
                                     <button className="text-primary font-semibold text-sm">Apply</button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Jobs from clients */}
+                <div className="bg-inputBg dark:bg-darkCard rounded-3xl shadow-lg p-8 border border-light/60 dark:border-darkBorder mb-8" data-aos="fade-up">
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-2xl font-bold text-textDark dark:text-darkText">Jobs from clients</h3>
+                    </div>
+                    {applyError && (
+                        <div className="mb-4 p-3 bg-accent/20 border border-accent text-primary rounded-lg text-sm">
+                            {applyError}
+                        </div>
+                    )}
+                    {applySuccess && (
+                        <div className="mb-4 p-3 bg-accent/30 border border-accent text-primary rounded-lg text-sm">
+                            {applySuccess}
+                        </div>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {jobs.length === 0 && (
+                            <div className="text-textDark/60 dark:text-darkText/60">No jobs available yet.</div>
+                        )}
+                        {jobs.map((job, index) => (
+                            <div key={job._id || `${job.title}-${index}`} className="rounded-2xl border border-light/60 dark:border-darkBorder p-5 bg-white/70 dark:bg-darkCard/70 hover:shadow-md transition" data-aos="fade-up" data-aos-delay={index * 60}>
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <h4 className="font-semibold text-lg text-textDark dark:text-darkText">{job.title}</h4>
+                                        <p className="text-sm text-textDark/60 dark:text-darkText/60">{job.companyName || "Client"}</p>
+                                    </div>
+                                    <div className="w-10 h-10 rounded-xl bg-accent/30 flex items-center justify-center text-primary font-bold">
+                                        {job.companyName?.[0] || "C"}
+                                    </div>
+                                </div>
+                                <p className="text-sm text-textDark/70 dark:text-darkText/70 mt-3">{job.description}</p>
+                                <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.location || "Remote"}</span>
+                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.employmentType || "Flexible"}</span>
+                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.level || "Any level"}</span>
+                                </div>
+                                <div className="mt-4 flex items-center justify-between">
+                                    <div className="text-primary font-semibold text-sm">{job.salary || "Budget discussed"}</div>
+                                    <button
+                                        className="text-primary font-semibold text-sm"
+                                        onClick={() => {
+                                            setApplyJobId(job._id);
+                                            setApplyForm({
+                                                fullName: profile?.name || "",
+                                                email: profile?.email || "",
+                                                phone: "",
+                                                coverMessage: "",
+                                                experience: "",
+                                                resumeLink: "",
+                                            });
+                                            setApplyError("");
+                                            setApplySuccess("");
+                                        }}
+                                    >
+                                        Apply
+                                    </button>
+                                </div>
+
+                                {applyJobId === job._id && (
+                                    <div className="mt-5 border-t border-light/60 dark:border-darkBorder pt-4">
+                                        <h5 className="font-semibold text-textDark dark:text-darkText">Application Form</h5>
+                                        <div className="mt-3 space-y-3">
+                                            <input
+                                                type="text"
+                                                value={applyForm.fullName}
+                                                onChange={(e) => setApplyForm((prev) => ({ ...prev, fullName: e.target.value }))}
+                                                placeholder="Full name"
+                                                className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                            />
+                                            <input
+                                                type="email"
+                                                value={applyForm.email}
+                                                onChange={(e) => setApplyForm((prev) => ({ ...prev, email: e.target.value }))}
+                                                placeholder="Email address"
+                                                className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                            />
+                                            <input
+                                                type="text"
+                                                value={applyForm.phone}
+                                                onChange={(e) => setApplyForm((prev) => ({ ...prev, phone: e.target.value }))}
+                                                placeholder="Contact number"
+                                                className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                            />
+                                            <textarea
+                                                rows={3}
+                                                value={applyForm.coverMessage}
+                                                onChange={(e) => setApplyForm((prev) => ({ ...prev, coverMessage: e.target.value }))}
+                                                placeholder="Cover message"
+                                                className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                            />
+                                            <textarea
+                                                rows={3}
+                                                value={applyForm.experience}
+                                                onChange={(e) => setApplyForm((prev) => ({ ...prev, experience: e.target.value }))}
+                                                placeholder="Past experience (optional)"
+                                                className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                            />
+                                            <input
+                                                type="text"
+                                                value={applyForm.resumeLink}
+                                                onChange={(e) => setApplyForm((prev) => ({ ...prev, resumeLink: e.target.value }))}
+                                                placeholder="Resume / portfolio link (optional)"
+                                                className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                            />
+                                        </div>
+                                        <div className="mt-4 flex flex-col md:flex-row gap-3">
+                                            <button
+                                                type="button"
+                                                disabled={applyLoading}
+                                                onClick={async () => {
+                                                    setApplyLoading(true);
+                                                    setApplyError("");
+                                                    setApplySuccess("");
+                                                    try {
+                                                        await applyToJob(job._id, applyForm);
+                                                        setApplySuccess("Application submitted successfully.");
+                                                        setApplyJobId(null);
+                                                        const updatedApplications = await getStudentApplications();
+                                                        setApplications(updatedApplications.data || []);
+                                                    } catch (error) {
+                                                        setApplyError(error.response?.data?.message || "Failed to apply");
+                                                    } finally {
+                                                        setApplyLoading(false);
+                                                    }
+                                                }}
+                                                className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-secondary transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {applyLoading ? "Submitting..." : "Submit Application"}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setApplyJobId(null)}
+                                                className="bg-light dark:bg-darkBorder text-textDark dark:text-darkText px-6 py-2 rounded-lg hover:bg-accent/30 dark:hover:bg-accent/20 transition"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* My Applications */}
+                <div className="bg-inputBg dark:bg-darkCard rounded-3xl shadow-lg p-8 border border-light/60 dark:border-darkBorder mb-8" data-aos="fade-up">
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-2xl font-bold text-textDark dark:text-darkText">My applications</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {applications.filter((app) => app.status === "pending" || app.status === "hired").length === 0 && (
+                            <div className="text-textDark/60 dark:text-darkText/60">No applications yet.</div>
+                        )}
+                        {applications
+                            .filter((app) => app.status === "pending" || app.status === "hired")
+                            .map((app) => (
+                                <div key={app._id} className="rounded-2xl border border-light/60 dark:border-darkBorder p-5 bg-white/70 dark:bg-darkCard/70">
+                                    <div className="flex items-start justify-between">
+                                        <div>
+                                            <h4 className="font-semibold text-lg text-textDark dark:text-darkText">
+                                                {app.jobId?.title || "Job"}
+                                            </h4>
+                                            <p className="text-sm text-textDark/60 dark:text-darkText/60">
+                                                {app.jobId?.companyName || "Client"}
+                                            </p>
+                                        </div>
+                                        <span className={`px-2 py-1 rounded text-xs ${
+                                            app.status === "hired"
+                                                ? "bg-accent/40 text-primary"
+                                                : "bg-accent/20 text-primary"
+                                        }`}>
+                                            {app.status}
+                                        </span>
+                                    </div>
+                                    <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                                        <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{app.jobId?.location || "Remote"}</span>
+                                        <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{app.jobId?.employmentType || "Flexible"}</span>
+                                        <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{app.jobId?.level || "Any level"}</span>
+                                    </div>
+                                    {app.status === "hired" && (
+                                        <div className="mt-4">
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    await completeApplication(app.jobId?._id, app._id);
+                                                    const updatedApplications = await getStudentApplications();
+                                                    const updatedHistory = await getStudentHistory();
+                                                    setApplications(updatedApplications.data || []);
+                                                    setHistory(updatedHistory.data || []);
+                                                }}
+                                                className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-secondary transition"
+                                            >
+                                                Mark completed
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                    </div>
+                </div>
+
+                {/* Job History */}
+                <div className="bg-inputBg dark:bg-darkCard rounded-3xl shadow-lg p-8 border border-light/60 dark:border-darkBorder mb-8" data-aos="fade-up">
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-2xl font-bold text-textDark dark:text-darkText">Job history</h3>
+                        {history.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    await clearStudentHistory();
+                                    setHistory([]);
+                                }}
+                                className="text-primary font-semibold text-sm"
+                            >
+                                Clear history
+                            </button>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {history.length === 0 && (
+                            <div className="text-textDark/60 dark:text-darkText/60">No completed jobs yet.</div>
+                        )}
+                        {history.map((app) => (
+                            <div key={app._id} className="rounded-2xl border border-light/60 dark:border-darkBorder p-5 bg-white/70 dark:bg-darkCard/70">
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <h4 className="font-semibold text-lg text-textDark dark:text-darkText">
+                                            {app.jobId?.title || "Job"}
+                                        </h4>
+                                        <p className="text-sm text-textDark/60 dark:text-darkText/60">
+                                            {app.jobId?.companyName || "Client"}
+                                        </p>
+                                    </div>
+                                    <span className="px-2 py-1 rounded text-xs bg-accent/40 text-primary">completed</span>
+                                </div>
+                                <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{app.jobId?.location || "Remote"}</span>
+                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{app.jobId?.employmentType || "Flexible"}</span>
+                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{app.jobId?.level || "Any level"}</span>
+                                </div>
+                                <div className="mt-4">
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            await archiveStudentApplication(app._id);
+                                            setHistory((prev) => prev.filter((item) => item._id !== app._id));
+                                        }}
+                                        className="text-primary font-semibold text-sm"
+                                    >
+                                        Remove
+                                    </button>
                                 </div>
                             </div>
                         ))}

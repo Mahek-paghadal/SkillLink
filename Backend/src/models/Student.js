@@ -8,6 +8,10 @@ const studentSchema = new mongoose.Schema(
             required: true,
             unique: true
         },
+        skills: {
+            type: [String],
+            default: [],
+        },
     },
     { timestamps: true }
 );

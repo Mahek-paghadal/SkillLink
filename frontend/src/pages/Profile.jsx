@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getProfile, logoutUser, uploadProfileImage, removeProfileImage } from "../api/authApi";
+import { updateStudentSkills } from "../api/studentApi";
 import { removeToken } from "../utils/auth";
 
 const Profile = () => {
@@ -10,6 +11,10 @@ const Profile = () => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [skills, setSkills] = useState([]);
+  const [skillInput, setSkillInput] = useState("");
+  const [skillsSaving, setSkillsSaving] = useState(false);
+  const [skillsError, setSkillsError] = useState("");
   const navigate = useNavigate();
 
   const apiBase = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
@@ -21,6 +26,9 @@ const Profile = () => {
       try {
         const res = await getProfile();
         setUser(res.data);
+        if (res.data?.role === "student") {
+          setSkills(res.data?.skills || []);
+        }
       } catch (err) {
         setError("Failed to load profile");
         navigate("/");
@@ -77,6 +85,34 @@ const Profile = () => {
     } finally {
       removeToken();
       window.location.href = "/";
+    }
+  };
+
+  const addSkill = () => {
+    const trimmed = skillInput.trim();
+    if (!trimmed) return;
+    if (skills.includes(trimmed)) {
+      setSkillInput("");
+      return;
+    }
+    setSkills((prev) => [...prev, trimmed]);
+    setSkillInput("");
+  };
+
+  const removeSkill = (skill) => {
+    setSkills((prev) => prev.filter((item) => item !== skill));
+  };
+
+  const saveSkills = async () => {
+    setSkillsSaving(true);
+    setSkillsError("");
+    try {
+      const res = await updateStudentSkills(skills);
+      setSkills(res.data?.skills || []);
+    } catch (e) {
+      setSkillsError(e.response?.data?.message || "Failed to update skills");
+    } finally {
+      setSkillsSaving(false);
     }
   };
 
@@ -172,6 +208,77 @@ const Profile = () => {
               <p className="text-lg font-semibold text-textDark dark:text-darkText">{user?.createdAt ? new Date(user.createdAt).toLocaleString() : "-"}</p>
             </div>
           </div>
+
+          {user?.role === "student" && (
+            <div className="mt-8">
+              <div className="bg-white/70 dark:bg-darkCard/70 border border-light/60 dark:border-darkBorder rounded-2xl p-6">
+                <h3 className="text-xl font-bold text-textDark dark:text-darkText">Skills</h3>
+                <p className="text-textDark/60 dark:text-darkText/60 text-sm mt-1">Update your skills to improve task matching.</p>
+
+                {skillsError && (
+                  <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-lg text-sm">
+                    {skillsError}
+                  </div>
+                )}
+
+                <div className="mt-4 flex flex-col md:flex-row gap-3">
+                  <input
+                    type="text"
+                    value={skillInput}
+                    onChange={(e) => setSkillInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addSkill();
+                      }
+                    }}
+                    placeholder="e.g., Canva, Excel, Java"
+                    className="flex-1 px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText placeholder:text-textDark/50 dark:placeholder:text-darkText/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={addSkill}
+                    className="bg-primary text-white px-6 py-3 rounded-lg hover:bg-secondary transition"
+                  >
+                    Add Skill
+                  </button>
+                </div>
+
+                {skills.length > 0 ? (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {skills.map((skill) => (
+                      <span
+                        key={skill}
+                        className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-light/80 dark:bg-darkBorder text-sm text-textDark dark:text-darkText"
+                      >
+                        {skill}
+                        <button
+                          type="button"
+                          onClick={() => removeSkill(skill)}
+                          className="text-textDark/60 dark:text-darkText/60 hover:text-primary"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-3 text-textDark/60 dark:text-darkText/60 text-sm">No skills added yet.</div>
+                )}
+
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={saveSkills}
+                    disabled={skillsSaving}
+                    className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-secondary transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {skillsSaving ? "Saving..." : "Save Skills"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="mt-8 flex justify-end">
             <button onClick={handleLogout} className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-secondary transition">
               Logout
