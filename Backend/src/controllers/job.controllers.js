@@ -3,6 +3,7 @@ const Application = require("../models/Application");
 const User = require("../models/User");
 const Student = require("../models/Student");
 const sendEmail = require("../utils/sendEmail");
+const path = require("path");
 
 const sanitizeTags = (tags) => {
     if (!Array.isArray(tags)) return [];
@@ -13,7 +14,9 @@ const sanitizeTags = (tags) => {
 
 exports.listJobs = async (req, res) => {
     try {
-        const jobs = await Job.find({ status: "open" }).sort({ createdAt: -1 });
+        const jobs = await Job.find({ status: "open" })
+            .sort({ createdAt: -1 })
+            .populate("createdBy", "name profileImage");
         res.json(jobs);
     } catch (error) {
         res.status(500).json({ message: "Failed to load jobs" });
@@ -117,7 +120,7 @@ exports.getApplicants = async (req, res) => {
 
         const applications = await Application.find({ jobId: job._id })
             .sort({ createdAt: -1 })
-            .populate("studentId", "name email");
+            .populate("studentId", "name email profileImage");
 
         res.json({
             job,
@@ -209,6 +212,11 @@ exports.applyForJob = async (req, res) => {
         const client = await User.findById(job.createdBy);
         const studentProfile = await Student.findOne({ userId: req.user.userId });
 
+        const resumeFile = req.file
+            ? `/uploads/resumes/${req.file.filename}`
+            : "";
+        const resumeFileName = req.file?.originalname || "";
+
         const application = await Application.create({
             jobId: job._id,
             studentId: req.user.userId,
@@ -219,11 +227,20 @@ exports.applyForJob = async (req, res) => {
             coverMessage: req.body?.coverMessage || "",
             experience: req.body?.experience || "",
             resumeLink: req.body?.resumeLink || "",
+            resumeFile,
+            resumeFileName,
             studentSkills: studentProfile?.skills || [],
             status: "pending",
         });
 
         if (client?.email) {
+            const attachments = [];
+            if (resumeFile) {
+                attachments.push({
+                    filename: resumeFileName || path.basename(resumeFile),
+                    path: path.join(__dirname, "..", "..", resumeFile.replace(/^\/+/g, "")),
+                });
+            }
             await sendEmail({
                 to: client.email,
                 subject: `New application: ${job.title}`,
@@ -237,7 +254,9 @@ exports.applyForJob = async (req, res) => {
                     <p><strong>Cover message:</strong></p>
                     <p>${application.coverMessage || "(No message)"}</p>
                     <p><strong>Resume/Portfolio:</strong> ${application.resumeLink || "(Not provided)"}</p>
+                    <p><strong>Resume file:</strong> ${resumeFileName || "(Not uploaded)"}</p>
                 `,
+                attachments,
             });
         }
 

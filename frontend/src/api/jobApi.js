@@ -1,7 +1,11 @@
 import API from "./authApi";
 
 export const getJobs = () => API.get("/jobs");
-export const applyToJob = (jobId, payload) => API.post(`/jobs/${jobId}/apply`, payload);
+export const applyToJob = (jobId, payload) =>
+	API.post(`/jobs/${jobId}/apply`, payload, payload instanceof FormData
+		? { headers: { "Content-Type": "multipart/form-data" } }
+		: undefined
+	);
 export const getStudentApplications = () => API.get("/jobs/applications/me");
 export const getStudentHistory = () => API.get("/jobs/applications/history");
 export const completeApplication = (jobId, applicationId) =>

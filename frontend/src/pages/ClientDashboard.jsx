@@ -35,6 +35,8 @@ const ClientDashboard = () => {
     const [applicantsByJob, setApplicantsByJob] = useState({});
     const [history, setHistory] = useState([]);
     const navigate = useNavigate();
+    const apiBase = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
+    const backendOrigin = apiBase.replace(/\/api\/?$/, "");
 
     const fetchJobs = async () => {
         try {
@@ -384,19 +386,37 @@ const ClientDashboard = () => {
                                             <div className="text-textDark/60 dark:text-darkText/60 text-sm mt-2">No applicants yet.</div>
                                         )}
                                         <div className="mt-3 space-y-3">
-                                            {(applicantsByJob[job._id].applications || []).map((app) => (
+                                            {(applicantsByJob[job._id].applications || []).map((app) => {
+                                                const studentProfileImage = app?.studentId?.profileImage
+                                                    ? `${backendOrigin}${app.studentId.profileImage}`
+                                                    : "";
+                                                const studentInitial = (app.studentName || app.studentId?.name || "Student").charAt(0);
+                                                return (
                                                 <div key={app._id} className="rounded-xl border border-light/60 dark:border-darkBorder p-4 bg-inputBg dark:bg-darkCard">
                                                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                                                        <div>
-                                                            <p className="font-semibold text-textDark dark:text-darkText">
-                                                                {app.studentName || app.studentId?.name || "Student"}
-                                                            </p>
-                                                            <p className="text-sm text-textDark/60 dark:text-darkText/60">
-                                                                {app.studentEmail || app.studentId?.email || ""}
-                                                            </p>
-                                                            <p className="text-xs text-textDark/60 dark:text-darkText/60">
-                                                                {app.contactNumber || ""}
-                                                            </p>
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-10 h-10 rounded-full bg-accent/30 flex items-center justify-center text-primary font-semibold overflow-hidden">
+                                                                {studentProfileImage ? (
+                                                                    <img
+                                                                        src={studentProfileImage}
+                                                                        alt={`${app.studentName || app.studentId?.name || "Student"} profile`}
+                                                                        className="w-full h-full object-cover"
+                                                                    />
+                                                                ) : (
+                                                                    studentInitial || "S"
+                                                                )}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-semibold text-textDark dark:text-darkText">
+                                                                    {app.studentName || app.studentId?.name || "Student"}
+                                                                </p>
+                                                                <p className="text-sm text-textDark/60 dark:text-darkText/60">
+                                                                    {app.studentEmail || app.studentId?.email || ""}
+                                                                </p>
+                                                                <p className="text-xs text-textDark/60 dark:text-darkText/60">
+                                                                    {app.contactNumber || ""}
+                                                                </p>
+                                                            </div>
                                                         </div>
                                                         <div className="flex items-center gap-3">
                                                             <span className={`px-2 py-1 rounded text-xs ${
@@ -473,8 +493,19 @@ const ClientDashboard = () => {
                                                             Resume / Portfolio
                                                         </a>
                                                     )}
+                                                    {app.resumeFile && (
+                                                        <a
+                                                            href={`${backendOrigin}${app.resumeFile}`}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="text-primary text-sm font-semibold mt-2 ml-3 inline-block"
+                                                        >
+                                                            Download resume
+                                                        </a>
+                                                    )}
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )}

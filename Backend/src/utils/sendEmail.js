@@ -1,6 +1,6 @@
 const nodemailer = require("nodemailer");
 
-const sendEmail = async ({to , subject , html}) => {
+const sendEmail = async ({to , subject , html, attachments = []}) => {
     try{
         const transporter = nodemailer.createTransport({
             host: process.env.EMAIL_HOST,
@@ -16,7 +16,8 @@ const sendEmail = async ({to , subject , html}) => {
             from: `"SkillLink Support" <${process.env.EMAIL_USER}>`,
             to,
             subject,
-            html
+            html,
+            attachments
         });
     } catch (error) {
         console.error("Email sending failed : " , error );

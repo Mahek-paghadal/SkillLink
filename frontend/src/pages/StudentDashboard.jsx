@@ -26,12 +26,15 @@ const StudentDashboard = () => {
         experience: "",
         resumeLink: "",
     });
+    const [resumeFile, setResumeFile] = useState(null);
     const [applyLoading, setApplyLoading] = useState(false);
     const [applyError, setApplyError] = useState("");
     const [applySuccess, setApplySuccess] = useState("");
     const [applications, setApplications] = useState([]);
     const [history, setHistory] = useState([]);
     const navigate = useNavigate();
+    const apiBase = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
+    const backendOrigin = apiBase.replace(/\/api\/?$/, "");
 
     useEffect(() => {
         AOS.init({
@@ -245,15 +248,28 @@ const StudentDashboard = () => {
                         {jobs.length === 0 && (
                             <div className="text-textDark/60 dark:text-darkText/60">No jobs available yet.</div>
                         )}
-                        {jobs.map((job, index) => (
+                        {jobs.map((job, index) => {
+                            const clientProfileImage = job?.createdBy?.profileImage
+                                ? `${backendOrigin}${job.createdBy.profileImage}`
+                                : "";
+                            const clientInitial = (job.companyName || job.createdBy?.name || "Client").charAt(0);
+                            return (
                             <div key={job._id || `${job.title}-${index}`} className="rounded-2xl border border-light/60 dark:border-darkBorder p-5 bg-white/70 dark:bg-darkCard/70 hover:shadow-md transition" data-aos="fade-up" data-aos-delay={index * 60}>
-                                <div className="flex items-start justify-between">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-accent/30 flex items-center justify-center text-primary font-bold overflow-hidden">
+                                        {clientProfileImage ? (
+                                            <img
+                                                src={clientProfileImage}
+                                                alt={`${job.companyName || job.createdBy?.name || "Client"} profile`}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            clientInitial || "C"
+                                        )}
+                                    </div>
                                     <div>
                                         <h4 className="font-semibold text-lg text-textDark dark:text-darkText">{job.title}</h4>
                                         <p className="text-sm text-textDark/60 dark:text-darkText/60">{job.companyName || "Client"}</p>
-                                    </div>
-                                    <div className="w-10 h-10 rounded-xl bg-accent/30 flex items-center justify-center text-primary font-bold">
-                                        {job.companyName?.[0] || "C"}
                                     </div>
                                 </div>
                                 <p className="text-sm text-textDark/70 dark:text-darkText/70 mt-3">{job.description}</p>
@@ -276,6 +292,7 @@ const StudentDashboard = () => {
                                                 experience: "",
                                                 resumeLink: "",
                                             });
+                                            setResumeFile(null);
                                             setApplyError("");
                                             setApplySuccess("");
                                         }}
@@ -286,7 +303,16 @@ const StudentDashboard = () => {
 
                                 {applyJobId === job._id && (
                                     <div className="mt-5 border-t border-light/60 dark:border-darkBorder pt-4">
-                                        <h5 className="font-semibold text-textDark dark:text-darkText">Application Form</h5>
+                                        <div className="flex items-center justify-between">
+                                            <h5 className="font-semibold text-textDark dark:text-darkText">Application Form</h5>
+                                            <button
+                                                type="button"
+                                                onClick={() => setApplyJobId(null)}
+                                                className="text-sm font-semibold text-primary hover:text-secondary"
+                                            >
+                                                Close
+                                            </button>
+                                        </div>
                                         <div className="mt-3 space-y-3">
                                             <input
                                                 type="text"
@@ -330,6 +356,22 @@ const StudentDashboard = () => {
                                                 placeholder="Resume / portfolio link (optional)"
                                                 className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
                                             />
+                                            <div className="space-y-2">
+                                                <label className="text-sm text-textDark/70 dark:text-darkText/70">
+                                                    Or upload resume (PDF/DOC, max 5MB)
+                                                </label>
+                                                <input
+                                                    type="file"
+                                                    accept=".pdf,.doc,.docx"
+                                                    onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+                                                    className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                                />
+                                                {resumeFile && (
+                                                    <p className="text-xs text-textDark/60 dark:text-darkText/60">
+                                                        Selected: {resumeFile.name}
+                                                    </p>
+                                                )}
+                                            </div>
                                         </div>
                                         <div className="mt-4 flex flex-col md:flex-row gap-3">
                                             <button
@@ -340,9 +382,17 @@ const StudentDashboard = () => {
                                                     setApplyError("");
                                                     setApplySuccess("");
                                                     try {
-                                                        await applyToJob(job._id, applyForm);
+                                                        const formData = new FormData();
+                                                        Object.entries(applyForm).forEach(([key, value]) => {
+                                                            formData.append(key, value || "");
+                                                        });
+                                                        if (resumeFile) {
+                                                            formData.append("resume", resumeFile);
+                                                        }
+                                                        await applyToJob(job._id, formData);
                                                         setApplySuccess("Application submitted successfully.");
                                                         setApplyJobId(null);
+                                                        setResumeFile(null);
                                                         const updatedApplications = await getStudentApplications();
                                                         setApplications(updatedApplications.data || []);
                                                     } catch (error) {
@@ -357,7 +407,10 @@ const StudentDashboard = () => {
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => setApplyJobId(null)}
+                                                onClick={() => {
+                                                    setApplyJobId(null);
+                                                    setResumeFile(null);
+                                                }}
                                                 className="bg-light dark:bg-darkBorder text-textDark dark:text-darkText px-6 py-2 rounded-lg hover:bg-accent/30 dark:hover:bg-accent/20 transition"
                                             >
                                                 Cancel
@@ -366,7 +419,8 @@ const StudentDashboard = () => {
                                     </div>
                                 )}
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
 
