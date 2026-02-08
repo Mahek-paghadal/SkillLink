@@ -203,6 +203,23 @@ exports.applyForJob = async (req, res) => {
             return res.status(404).json({ message: "Job not found" });
         }
 
+        const fullName = (req.body?.fullName || "").trim();
+        const email = (req.body?.email || "").trim();
+        const phone = (req.body?.phone || "").trim();
+        const coverMessage = (req.body?.coverMessage || "").trim();
+        const experience = (req.body?.experience || "").trim();
+        const resumeLink = (req.body?.resumeLink || "").trim();
+        const hasResumeFile = Boolean(req.file);
+        const hasPortfolio = Boolean(resumeLink);
+
+        if (!fullName || !email || !phone || !coverMessage) {
+            return res.status(400).json({ message: "Please fill all required fields." });
+        }
+
+        if (!hasResumeFile && !hasPortfolio) {
+            return res.status(400).json({ message: "Resume upload or portfolio link is required." });
+        }
+
         const existing = await Application.findOne({ jobId, studentId: req.user.userId });
         if (existing) {
             return res.status(400).json({ message: "You already applied to this job" });
@@ -221,12 +238,12 @@ exports.applyForJob = async (req, res) => {
             jobId: job._id,
             studentId: req.user.userId,
             clientId: job.createdBy,
-            studentName: req.body?.fullName || student?.name || "",
-            studentEmail: req.body?.email || student?.email || "",
-            contactNumber: req.body?.phone || "",
-            coverMessage: req.body?.coverMessage || "",
-            experience: req.body?.experience || "",
-            resumeLink: req.body?.resumeLink || "",
+            studentName: fullName || student?.name || "",
+            studentEmail: email || student?.email || "",
+            contactNumber: phone,
+            coverMessage,
+            experience,
+            resumeLink,
             resumeFile,
             resumeFileName,
             studentSkills: studentProfile?.skills || [],
@@ -241,21 +258,33 @@ exports.applyForJob = async (req, res) => {
                     path: path.join(__dirname, "..", "..", resumeFile.replace(/^\/+/g, "")),
                 });
             }
+            const emailLines = [
+                "<h2>New Application Received</h2>",
+                `<p><strong>Job:</strong> ${job.title}</p>`,
+                `<p><strong>Company:</strong> ${job.companyName || "Client"}</p>`,
+                `<p><strong>Student:</strong> ${application.studentName || "Student"}</p>`,
+            ];
+
+            if (application.studentEmail) {
+                emailLines.push(`<p><strong>Email:</strong> ${application.studentEmail}</p>`);
+            }
+            if (application.contactNumber) {
+                emailLines.push(`<p><strong>Contact:</strong> ${application.contactNumber}</p>`);
+            }
+            if (application.coverMessage) {
+                emailLines.push("<p><strong>Cover message:</strong></p>");
+                emailLines.push(`<p>${application.coverMessage}</p>`);
+            }
+            if (application.resumeLink) {
+                emailLines.push(`<p><strong>Portfolio link:</strong> ${application.resumeLink}</p>`);
+            }
+            if (resumeFileName) {
+                emailLines.push(`<p><strong>Resume file:</strong> ${resumeFileName}</p>`);
+            }
             await sendEmail({
                 to: client.email,
                 subject: `New application: ${job.title}`,
-                html: `
-                    <h2>New Application Received</h2>
-                    <p><strong>Job:</strong> ${job.title}</p>
-                    <p><strong>Company:</strong> ${job.companyName || "Client"}</p>
-                    <p><strong>Student:</strong> ${application.studentName || "Student"}</p>
-                    <p><strong>Email:</strong> ${application.studentEmail || ""}</p>
-                    <p><strong>Contact:</strong> ${application.contactNumber || ""}</p>
-                    <p><strong>Cover message:</strong></p>
-                    <p>${application.coverMessage || "(No message)"}</p>
-                    <p><strong>Resume/Portfolio:</strong> ${application.resumeLink || "(Not provided)"}</p>
-                    <p><strong>Resume file:</strong> ${resumeFileName || "(Not uploaded)"}</p>
-                `,
+                html: emailLines.join("\n"),
                 attachments,
             });
         }

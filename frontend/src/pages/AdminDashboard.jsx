@@ -1,26 +1,41 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getProfile } from "../api/authApi";
-import { getStats, listUsers } from "../api/adminApi";
+import {
+    getStats,
+    listUsers,
+    listJobs,
+    updateJobStatus,
+    deleteJob,
+    listApplications,
+    updateApplicationStatus,
+    deleteApplication,
+} from "../api/adminApi";
 
 const AdminDashboard = () => {
     const [user, setUser] = useState(null);
     const [stats, setStats] = useState(null);
     const [users, setUsers] = useState([]);
+    const [jobs, setJobs] = useState([]);
+    const [applications, setApplications] = useState([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [profileRes, statsRes, usersRes] = await Promise.all([
+                const [profileRes, statsRes, usersRes, jobsRes, appsRes] = await Promise.all([
                     getProfile(),
                     getStats(),
-                    listUsers()
+                    listUsers(),
+                    listJobs(),
+                    listApplications(),
                 ]);
                 setUser(profileRes.data);
                 setStats(statsRes.data);
                 setUsers(usersRes.data);
+                setJobs(jobsRes.data);
+                setApplications(appsRes.data);
             } catch (error) {
                 console.error("Failed to fetch data:", error);
                 navigate("/");
@@ -51,7 +66,7 @@ const AdminDashboard = () => {
                 </div>
 
                 {/* Stats Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
                     <div className="bg-inputBg dark:bg-darkCard rounded-xl shadow-md p-6">
                         <div className="flex items-center justify-between">
                             <div>
@@ -93,6 +108,60 @@ const AdminDashboard = () => {
                             </div>
                         </div>
                     </div>
+                    <div className="bg-inputBg dark:bg-darkCard rounded-xl shadow-md p-6">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-textDark/70 dark:text-darkText/70 text-sm">Total Users</p>
+                                <p className="text-2xl font-bold text-primary mt-1">{stats?.totalUsers || 0}</p>
+                            </div>
+                            <div className="w-12 h-12 bg-accent/30 dark:bg-accent/20 rounded-full flex items-center justify-center">
+                                <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div className="bg-inputBg dark:bg-darkCard rounded-2xl shadow-lg p-6">
+                        <h4 className="text-lg font-bold text-textDark dark:text-darkText mb-4">Jobs overview</h4>
+                        <div className="grid grid-cols-3 gap-4">
+                            <div className="bg-white/70 dark:bg-darkCard/70 rounded-xl p-4 border border-light/60 dark:border-darkBorder">
+                                <p className="text-xs text-textDark/60 dark:text-darkText/60">Open</p>
+                                <p className="text-xl font-bold text-primary">{stats?.jobs?.open || 0}</p>
+                            </div>
+                            <div className="bg-white/70 dark:bg-darkCard/70 rounded-xl p-4 border border-light/60 dark:border-darkBorder">
+                                <p className="text-xs text-textDark/60 dark:text-darkText/60">Closed</p>
+                                <p className="text-xl font-bold text-primary">{stats?.jobs?.closed || 0}</p>
+                            </div>
+                            <div className="bg-white/70 dark:bg-darkCard/70 rounded-xl p-4 border border-light/60 dark:border-darkBorder">
+                                <p className="text-xs text-textDark/60 dark:text-darkText/60">Completed</p>
+                                <p className="text-xl font-bold text-primary">{stats?.jobs?.completed || 0}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="bg-inputBg dark:bg-darkCard rounded-2xl shadow-lg p-6">
+                        <h4 className="text-lg font-bold text-textDark dark:text-darkText mb-4">Applications overview</h4>
+                        <div className="grid grid-cols-4 gap-4">
+                            <div className="bg-white/70 dark:bg-darkCard/70 rounded-xl p-4 border border-light/60 dark:border-darkBorder">
+                                <p className="text-xs text-textDark/60 dark:text-darkText/60">Pending</p>
+                                <p className="text-xl font-bold text-primary">{stats?.applications?.pending || 0}</p>
+                            </div>
+                            <div className="bg-white/70 dark:bg-darkCard/70 rounded-xl p-4 border border-light/60 dark:border-darkBorder">
+                                <p className="text-xs text-textDark/60 dark:text-darkText/60">Hired</p>
+                                <p className="text-xl font-bold text-primary">{stats?.applications?.hired || 0}</p>
+                            </div>
+                            <div className="bg-white/70 dark:bg-darkCard/70 rounded-xl p-4 border border-light/60 dark:border-darkBorder">
+                                <p className="text-xs text-textDark/60 dark:text-darkText/60">Rejected</p>
+                                <p className="text-xl font-bold text-primary">{stats?.applications?.rejected || 0}</p>
+                            </div>
+                            <div className="bg-white/70 dark:bg-darkCard/70 rounded-xl p-4 border border-light/60 dark:border-darkBorder">
+                                <p className="text-xs text-textDark/60 dark:text-darkText/60">Completed</p>
+                                <p className="text-xl font-bold text-primary">{stats?.applications?.completed || 0}</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Users List */}
@@ -122,6 +191,117 @@ const AdminDashboard = () => {
                                         </td>
                                         <td className="py-3 px-4 text-textDark/70 dark:text-darkText/70">
                                             {new Date(u.createdAt).toLocaleDateString()}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Jobs List */}
+                <div className="bg-inputBg dark:bg-darkCard rounded-2xl shadow-lg p-8 mt-8">
+                    <h3 className="text-2xl font-bold text-textDark dark:text-darkText mb-6">All Jobs</h3>
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead>
+                                <tr className="border-b dark:border-darkBorder">
+                                    <th className="text-left py-3 px-4 text-textDark dark:text-darkText font-semibold">Title</th>
+                                    <th className="text-left py-3 px-4 text-textDark dark:text-darkText font-semibold">Client</th>
+                                    <th className="text-left py-3 px-4 text-textDark dark:text-darkText font-semibold">Status</th>
+                                    <th className="text-left py-3 px-4 text-textDark dark:text-darkText font-semibold">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {jobs.map((job) => (
+                                    <tr key={job._id} className="border-b dark:border-darkBorder hover:bg-light/50 dark:hover:bg-darkBorder/50">
+                                        <td className="py-3 px-4 text-textDark dark:text-darkText">{job.title}</td>
+                                        <td className="py-3 px-4 text-textDark/70 dark:text-darkText/70">
+                                            {job.createdBy?.name || job.createdBy?.email || "Client"}
+                                        </td>
+                                        <td className="py-3 px-4">
+                                            <select
+                                                value={job.status}
+                                                onChange={async (e) => {
+                                                    const res = await updateJobStatus(job._id, e.target.value);
+                                                    setJobs((prev) => prev.map((item) => (item._id === job._id ? res.data : item)));
+                                                }}
+                                                className="px-3 py-2 rounded-lg border border-light dark:border-darkBorder bg-inputBg dark:bg-darkCard text-textDark dark:text-darkText"
+                                            >
+                                                <option value="open">open</option>
+                                                <option value="closed">closed</option>
+                                                <option value="completed">completed</option>
+                                            </select>
+                                        </td>
+                                        <td className="py-3 px-4">
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    await deleteJob(job._id);
+                                                    setJobs((prev) => prev.filter((item) => item._id !== job._id));
+                                                }}
+                                                className="text-primary font-semibold text-sm"
+                                            >
+                                                Delete
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Applications List */}
+                <div className="bg-inputBg dark:bg-darkCard rounded-2xl shadow-lg p-8 mt-8">
+                    <h3 className="text-2xl font-bold text-textDark dark:text-darkText mb-6">All Applications</h3>
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead>
+                                <tr className="border-b dark:border-darkBorder">
+                                    <th className="text-left py-3 px-4 text-textDark dark:text-darkText font-semibold">Job</th>
+                                    <th className="text-left py-3 px-4 text-textDark dark:text-darkText font-semibold">Student</th>
+                                    <th className="text-left py-3 px-4 text-textDark dark:text-darkText font-semibold">Client</th>
+                                    <th className="text-left py-3 px-4 text-textDark dark:text-darkText font-semibold">Status</th>
+                                    <th className="text-left py-3 px-4 text-textDark dark:text-darkText font-semibold">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {applications.map((app) => (
+                                    <tr key={app._id} className="border-b dark:border-darkBorder hover:bg-light/50 dark:hover:bg-darkBorder/50">
+                                        <td className="py-3 px-4 text-textDark dark:text-darkText">{app.jobId?.title || "Job"}</td>
+                                        <td className="py-3 px-4 text-textDark/70 dark:text-darkText/70">
+                                            {app.studentName || app.studentId?.name || "Student"}
+                                        </td>
+                                        <td className="py-3 px-4 text-textDark/70 dark:text-darkText/70">
+                                            {app.clientId?.name || app.clientId?.email || "Client"}
+                                        </td>
+                                        <td className="py-3 px-4">
+                                            <select
+                                                value={app.status}
+                                                onChange={async (e) => {
+                                                    const res = await updateApplicationStatus(app._id, e.target.value);
+                                                    setApplications((prev) => prev.map((item) => (item._id === app._id ? res.data : item)));
+                                                }}
+                                                className="px-3 py-2 rounded-lg border border-light dark:border-darkBorder bg-inputBg dark:bg-darkCard text-textDark dark:text-darkText"
+                                            >
+                                                <option value="pending">pending</option>
+                                                <option value="hired">hired</option>
+                                                <option value="rejected">rejected</option>
+                                                <option value="completed">completed</option>
+                                            </select>
+                                        </td>
+                                        <td className="py-3 px-4">
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    await deleteApplication(app._id);
+                                                    setApplications((prev) => prev.filter((item) => item._id !== app._id));
+                                                }}
+                                                className="text-primary font-semibold text-sm"
+                                            >
+                                                Delete
+                                            </button>
                                         </td>
                                     </tr>
                                 ))}

@@ -45,6 +45,7 @@ const Navbar = () => {
     if (!authed) return "/";
     if (role === "student") return "/student/dashboard";
     if (role === "client") return "/client/dashboard";
+    if (role === "admin") return "/admin/dashboard";
     return "/";
   };
 
@@ -52,6 +53,7 @@ const Navbar = () => {
     location.pathname
   );
   const isStudentDashboard = role === "student" && location.pathname === "/student/dashboard";
+  const isAdminDashboard = role === "admin" && location.pathname === "/admin/dashboard";
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-inputBg/90 dark:bg-darkCard/90 backdrop-blur border-b border-light/50 dark:border-darkBorder">
@@ -86,7 +88,7 @@ const Navbar = () => {
               </Link>
             </>
           )}
-          {authed && !isAuthPage && !isStudentDashboard && (
+          {authed && !isAuthPage && !isStudentDashboard && !isAdminDashboard && (
             <Link
               to={getHomePath()}
               className="text-sm font-semibold bg-primary text-white px-4 py-2 rounded-full hover:bg-secondary transition"

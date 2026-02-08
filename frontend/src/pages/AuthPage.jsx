@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { loginUser, signupUser } from "../api/authApi";
+import { getStudentOverview } from "../api/studentApi";
 import { setToken, isAuthenticated, getUserRole } from "../utils/auth";
 
 const AuthPage = () => {
@@ -14,13 +15,29 @@ const AuthPage = () => {
 
     // If already authenticated, redirect away from auth page (fix back nav and direct access)
     useEffect(() => {
-        if (isAuthenticated()) {
+        const redirectIfAuthenticated = async () => {
+            if (!isAuthenticated()) return;
             const role = getUserRole();
-            if (role === "student") navigate("/student/dashboard", { replace: true });
-            else if (role === "client") navigate("/client/dashboard", { replace: true });
-            else if (role === "admin") navigate("/", { replace: true });
+            if (role === "student") {
+                try {
+                    const res = await getStudentOverview();
+                    if (!res.data?.hasSkills) {
+                        navigate("/student/skills", { replace: true });
+                        return;
+                    }
+                } catch (error) {
+                    navigate("/student/dashboard", { replace: true });
+                    return;
+                }
+                navigate("/student/dashboard", { replace: true });
+                return;
+            }
+            if (role === "client") navigate("/client/dashboard", { replace: true });
+            else if (role === "admin") navigate("/admin/dashboard", { replace: true });
             else navigate("/", { replace: true });
-        }
+        };
+
+        redirectIfAuthenticated();
     }, [navigate]);
 
     useEffect(() => {
@@ -140,11 +157,21 @@ const AuthPage = () => {
                     // Navigate based on role
                     const userRole = res.data.role;
                     if (userRole === "student") {
+                        try {
+                            const overviewRes = await getStudentOverview();
+                            if (!overviewRes.data?.hasSkills) {
+                                navigate("/student/skills", { replace: true });
+                                return;
+                            }
+                        } catch (error) {
+                            navigate("/student/dashboard", { replace: true });
+                            return;
+                        }
                         navigate("/student/dashboard", { replace: true });
                     } else if (userRole === "client") {
                         navigate("/client/dashboard", { replace: true });
                     } else if (userRole === "admin") {
-                        navigate("/", { replace: true });
+                        navigate("/admin/dashboard", { replace: true });
                     } else {
                         navigate("/dashboard", { replace: true });
                     }
@@ -169,11 +196,21 @@ const AuthPage = () => {
                         setToken(loginRes.data.token);
                         const userRole = loginRes.data.role;
                         if (userRole === "student") {
+                            try {
+                                const overviewRes = await getStudentOverview();
+                                if (!overviewRes.data?.hasSkills) {
+                                    navigate("/student/skills", { replace: true });
+                                    return;
+                                }
+                            } catch (error) {
+                                navigate("/student/dashboard", { replace: true });
+                                return;
+                            }
                             navigate("/student/dashboard", { replace: true });
                         } else if (userRole === "client") {
                             navigate("/client/dashboard", { replace: true });
                         } else if (userRole === "admin") {
-                            navigate("/", { replace: true });
+                            navigate("/admin/dashboard", { replace: true });
                         } else {
                             navigate("/dashboard", { replace: true });
                         }

@@ -3,7 +3,10 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import AuthPage from "./pages/AuthPage";
 import LandingPage from "./pages/LandingPage";
 import StudentDashboard from "./pages/StudentDashboard";
+import StudentJobs from "./pages/StudentJobs";
+import StudentSkills from "./pages/StudentSkills";
 import ClientDashboard from "./pages/ClientDashboard";
+import AdminDashboard from "./pages/AdminDashboard";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -17,6 +20,7 @@ function App() {
     const role = getUserRole();
     if (role === "student") return "/student/dashboard";
     if (role === "client") return "/client/dashboard";
+    if (role === "admin") return "/admin/dashboard";
     return "/";
   };
 
@@ -56,13 +60,39 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/student/jobs"
+          element={
+            <ProtectedRoute allowedRoles={["student"]}>
+              <StudentJobs />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/student/skills"
+          element={
+            <ProtectedRoute allowedRoles={["student"]}>
+              <StudentSkills />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Protected Client Routes */}
         <Route
           path="/client/dashboard"
           element={
-            <ProtectedRoute allowedRoles={["client", "admin"]}>
+            <ProtectedRoute allowedRoles={["client"]}>
               <ClientDashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Protected Admin Routes */}
+        <Route
+          path="/admin/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminDashboard />
             </ProtectedRoute>
           }
         />

@@ -6,11 +6,6 @@ import { getStudentOverview } from "../api/studentApi";
 import {
     getJobs,
     applyToJob,
-    getStudentApplications,
-    getStudentHistory,
-    completeApplication,
-    archiveStudentApplication,
-    clearStudentHistory,
 } from "../api/jobApi";
 
 const StudentDashboard = () => {
@@ -27,16 +22,24 @@ const StudentDashboard = () => {
         resumeLink: "",
     });
     const [resumeFile, setResumeFile] = useState(null);
+    const [includeResume, setIncludeResume] = useState(false);
+    const [includePortfolio, setIncludePortfolio] = useState(false);
     const [applyLoading, setApplyLoading] = useState(false);
-    const [applyError, setApplyError] = useState("");
-    const [applySuccess, setApplySuccess] = useState("");
-    const [applications, setApplications] = useState([]);
-    const [history, setHistory] = useState([]);
+    const [applyMessages, setApplyMessages] = useState({});
+    const [applySkillWarning, setApplySkillWarning] = useState("");
+    const [modelRecommendations, setModelRecommendations] = useState([]);
+    const [modelLoading, setModelLoading] = useState(false);
+    const [modelError, setModelError] = useState("");
+    const [overviewError, setOverviewError] = useState("");
+    const [showAllRecommendations, setShowAllRecommendations] = useState(false);
     const navigate = useNavigate();
     const apiBase = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
     const backendOrigin = apiBase.replace(/\/api\/?$/, "");
+    const modelApiBase =
+        process.env.REACT_APP_JOB_RECOMMENDATION_API_URL || "http://localhost:8000";
 
     useEffect(() => {
+        window.scrollTo(0, 0);
         AOS.init({
             duration: 800,
             easing: "ease-out-cubic",
@@ -49,13 +52,10 @@ const StudentDashboard = () => {
             try {
                 const res = await getStudentOverview();
                 setOverview(res.data);
-                if (!res.data?.hasSkills) {
-                    navigate("/profile", { replace: true });
-                    return;
-                }
+                setOverviewError("");
             } catch (error) {
                 console.error("Failed to fetch student overview:", error);
-                navigate("/");
+                setOverviewError("Failed to load dashboard data. Please try again.");
             } finally {
                 setLoading(false);
                 setTimeout(() => AOS.refresh(), 50);
@@ -69,27 +69,63 @@ const StudentDashboard = () => {
                 console.error("Failed to fetch jobs:", error);
             }
         };
-        const fetchApplications = async () => {
-            try {
-                const res = await getStudentApplications();
-                setApplications(res.data || []);
-            } catch (error) {
-                console.error("Failed to fetch applications:", error);
-            }
-        };
-        const fetchHistory = async () => {
-            try {
-                const res = await getStudentHistory();
-                setHistory(res.data || []);
-            } catch (error) {
-                console.error("Failed to fetch history:", error);
-            }
-        };
         fetchOverview();
         fetchJobs();
-        fetchApplications();
-        fetchHistory();
     }, [navigate]);
+
+    useEffect(() => {
+        const fetchModelRecommendations = async () => {
+            const skills = overview?.studentProfile?.skills || [];
+            if (skills.length === 0) {
+                setModelRecommendations([]);
+                return;
+            }
+
+            if (!jobs || jobs.length === 0) {
+                setModelRecommendations([]);
+                return;
+            }
+
+            setModelLoading(true);
+            setModelError("");
+            try {
+                const base = modelApiBase.replace(/\/$/, "");
+                const jobPayload = jobs.map((job) => ({
+                    id: job._id,
+                    title: job.title,
+                    description: job.description,
+                    company: job.companyName || job.createdBy?.name || "",
+                    location: job.location,
+                    employmentType: job.employmentType,
+                    level: job.level,
+                    salary: job.salary,
+                    tags: job.tags || [],
+                }));
+                const response = await fetch(`${base}/recommendations`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ skills, limit: 20, jobs: jobPayload }),
+                });
+
+                if (!response.ok) {
+                    throw new Error("Failed to load model recommendations");
+                }
+
+                const data = await response.json();
+                setModelRecommendations(data.recommendations || []);
+            } catch (error) {
+                console.error("Model recommendation error:", error);
+                setModelError("Model recommendations are unavailable right now.");
+                setModelRecommendations([]);
+            } finally {
+                setModelLoading(false);
+            }
+        };
+
+        fetchModelRecommendations();
+    }, [overview, modelApiBase, jobs]);
 
     if (loading) {
         return (
@@ -101,8 +137,39 @@ const StudentDashboard = () => {
 
     const profile = overview?.profile;
     const stats = overview?.stats;
-    const recommendations = overview?.recommendations || [];
-    const insights = overview?.insights || [];
+    const filteredRecommendations = (modelRecommendations || []).filter(
+        (job) => (job.score ?? 0) > 0
+    );
+    const hasMoreRecommendations = filteredRecommendations.length > 4;
+    const recommendationCount = overview?.hasSkills
+        ? filteredRecommendations.length
+        : (stats?.totalRecommendations ?? 0);
+    const recommendations = showAllRecommendations
+        ? filteredRecommendations
+        : filteredRecommendations.slice(0, 4);
+
+    const setApplyMessage = (jobId, message) => {
+        setApplyMessages((prev) => ({
+            ...prev,
+            [jobId]: message,
+        }));
+    };
+
+    const validateApplication = () => {
+        if (!applyForm.fullName.trim() || !applyForm.email.trim() || !applyForm.phone.trim() || !applyForm.coverMessage.trim()) {
+            return "Please fill all required fields.";
+        }
+        if (!includeResume && !includePortfolio) {
+            return "Please provide a resume upload or a portfolio link.";
+        }
+        if (includeResume && !resumeFile) {
+            return "Please upload your resume file.";
+        }
+        if (includePortfolio && !applyForm.resumeLink.trim()) {
+            return "Please add your portfolio link.";
+        }
+        return "";
+    };
 
     return (
         <div className="min-h-screen bg-bgLight dark:bg-darkBg">
@@ -157,7 +224,7 @@ const StudentDashboard = () => {
                         },
                         {
                             label: "Recommendations",
-                            value: stats?.totalRecommendations ?? 0,
+                            value: recommendationCount,
                             icon: (
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
                             ),
@@ -186,104 +253,76 @@ const StudentDashboard = () => {
                     ))}
                 </div>
 
-                {/* Insights */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    {insights.map((insight) => (
-                        <div key={insight.title} className="bg-inputBg dark:bg-darkCard rounded-2xl shadow-sm p-6 border border-light/60 dark:border-darkBorder" data-aos="zoom-in">
-                            <p className="text-xs text-textDark/60 dark:text-darkText/60">{insight.title}</p>
-                            <p className="text-2xl font-bold text-primary mt-2">{insight.value}</p>
-                            <p className="text-textDark/60 dark:text-darkText/60 text-sm mt-2">{insight.hint}</p>
-                        </div>
-                    ))}
-                </div>
+                {overviewError && (
+                    <div className="mb-8 p-3 bg-accent/20 border border-accent text-primary rounded-lg text-sm">
+                        {overviewError}
+                    </div>
+                )}
 
                 {/* Recommended Tasks (from skills) */}
                 <div className="bg-inputBg dark:bg-darkCard rounded-3xl shadow-lg p-8 border border-light/60 dark:border-darkBorder mb-8" data-aos="fade-up">
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-2xl font-bold text-textDark dark:text-darkText">Recommended micro tasks</h3>
-                        <Link to="/profile" className="text-primary font-semibold text-sm">Update skills</Link>
+                        <Link to="/student/skills" className="text-primary font-semibold text-sm">Update skills</Link>
                     </div>
+                    {modelError && (
+                        <div className="mb-4 p-3 bg-accent/20 border border-accent text-primary rounded-lg text-sm">
+                            {modelError}
+                        </div>
+                    )}
+                    {!overview?.hasSkills && (
+                        <div className="mb-6 rounded-2xl border border-light/60 dark:border-darkBorder bg-white/70 dark:bg-darkCard/70 p-5">
+                            <p className="text-sm text-textDark/70 dark:text-darkText/70">Add skills to unlock personalized recommendations.</p>
+                            <p className="text-xs text-textDark/50 dark:text-darkText/50 mt-1">We match jobs based on your skills and interests.</p>
+                        </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {modelLoading && (
+                            <div className="text-textDark/60 dark:text-darkText/60">Loading recommendations...</div>
+                        )}
+                        {!modelLoading && overview?.hasSkills && recommendations.length === 0 && (
+                            <div className="text-textDark/60 dark:text-darkText/60">No matches found.</div>
+                        )}
                         {recommendations.map((job, index) => (
                             <div key={`${job.title}-${index}`} className="rounded-2xl border border-light/60 dark:border-darkBorder p-5 bg-white/70 dark:bg-darkCard/70 hover:shadow-md transition" data-aos="fade-up" data-aos-delay={index * 60}>
                                 <div className="flex items-start justify-between">
                                     <div>
                                         <h4 className="font-semibold text-lg text-textDark dark:text-darkText">{job.title}</h4>
-                                        <p className="text-sm text-textDark/60 dark:text-darkText/60">{job.company}</p>
+                                        <p className="text-sm text-textDark/60 dark:text-darkText/60">
+                                            {job.company || "Recommendation"}
+                                        </p>
                                     </div>
                                     <div className="w-10 h-10 rounded-xl bg-accent/30 flex items-center justify-center text-primary font-bold">
-                                        {job.company?.[0] || "S"}
+                                        {(job.company || "R").charAt(0)}
                                     </div>
                                 </div>
                                 <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.location}</span>
-                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.employmentType}</span>
-                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.level}</span>
+                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">
+                                        {job.location || job.position || "Role match"}
+                                    </span>
+                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">
+                                        {job.employmentType || "Model"}
+                                    </span>
+                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">
+                                        {job.level || (job.score ? `Score ${Math.round(job.score * 100) / 100}` : "Match")}
+                                    </span>
                                 </div>
                                 <div className="mt-4 flex items-center justify-between">
-                                    <div className="text-primary font-semibold text-sm">{job.salary || "Budget suggested by ML"}</div>
-                                    <button className="text-primary font-semibold text-sm">Apply</button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Jobs from clients */}
-                <div className="bg-inputBg dark:bg-darkCard rounded-3xl shadow-lg p-8 border border-light/60 dark:border-darkBorder mb-8" data-aos="fade-up">
-                    <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-2xl font-bold text-textDark dark:text-darkText">Jobs from clients</h3>
-                    </div>
-                    {applyError && (
-                        <div className="mb-4 p-3 bg-accent/20 border border-accent text-primary rounded-lg text-sm">
-                            {applyError}
-                        </div>
-                    )}
-                    {applySuccess && (
-                        <div className="mb-4 p-3 bg-accent/30 border border-accent text-primary rounded-lg text-sm">
-                            {applySuccess}
-                        </div>
-                    )}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {jobs.length === 0 && (
-                            <div className="text-textDark/60 dark:text-darkText/60">No jobs available yet.</div>
-                        )}
-                        {jobs.map((job, index) => {
-                            const clientProfileImage = job?.createdBy?.profileImage
-                                ? `${backendOrigin}${job.createdBy.profileImage}`
-                                : "";
-                            const clientInitial = (job.companyName || job.createdBy?.name || "Client").charAt(0);
-                            return (
-                            <div key={job._id || `${job.title}-${index}`} className="rounded-2xl border border-light/60 dark:border-darkBorder p-5 bg-white/70 dark:bg-darkCard/70 hover:shadow-md transition" data-aos="fade-up" data-aos-delay={index * 60}>
-                                <div className="flex items-start gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-accent/30 flex items-center justify-center text-primary font-bold overflow-hidden">
-                                        {clientProfileImage ? (
-                                            <img
-                                                src={clientProfileImage}
-                                                alt={`${job.companyName || job.createdBy?.name || "Client"} profile`}
-                                                className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            clientInitial || "C"
-                                        )}
+                                    <div className="text-primary font-semibold text-sm">
+                                        {job.salary || "Budget suggested by ML"}
                                     </div>
-                                    <div>
-                                        <h4 className="font-semibold text-lg text-textDark dark:text-darkText">{job.title}</h4>
-                                        <p className="text-sm text-textDark/60 dark:text-darkText/60">{job.companyName || "Client"}</p>
-                                    </div>
-                                </div>
-                                <p className="text-sm text-textDark/70 dark:text-darkText/70 mt-3">{job.description}</p>
-                                <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.location || "Remote"}</span>
-                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.employmentType || "Flexible"}</span>
-                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.level || "Any level"}</span>
-                                </div>
-                                <div className="mt-4 flex items-center justify-between">
-                                    <div className="text-primary font-semibold text-sm">{job.salary || "Budget discussed"}</div>
                                     <button
                                         className="text-primary font-semibold text-sm"
                                         onClick={() => {
-                                            setApplyJobId(job._id);
+                                            if (!overview?.hasSkills) {
+                                                setApplySkillWarning("Add skills to apply for jobs.");
+                                                return;
+                                            }
+                                            if (!job.id) {
+                                                return;
+                                            }
+                                            setApplySkillWarning("");
+                                            setApplyJobId(job.id);
                                             setApplyForm({
                                                 fullName: profile?.name || "",
                                                 email: profile?.email || "",
@@ -293,26 +332,46 @@ const StudentDashboard = () => {
                                                 resumeLink: "",
                                             });
                                             setResumeFile(null);
-                                            setApplyError("");
-                                            setApplySuccess("");
+                                            setIncludeResume(false);
+                                            setIncludePortfolio(false);
+                                            setApplyMessage(job.id, { error: "", success: "" });
                                         }}
                                     >
                                         Apply
                                     </button>
                                 </div>
-
-                                {applyJobId === job._id && (
+                                {applyJobId === job.id && (
                                     <div className="mt-5 border-t border-light/60 dark:border-darkBorder pt-4">
                                         <div className="flex items-center justify-between">
                                             <h5 className="font-semibold text-textDark dark:text-darkText">Application Form</h5>
                                             <button
                                                 type="button"
-                                                onClick={() => setApplyJobId(null)}
+                                                onClick={() => {
+                                                    setApplyJobId(null);
+                                                    setResumeFile(null);
+                                                    setIncludeResume(false);
+                                                    setIncludePortfolio(false);
+                                                    setApplyMessage(job.id, { error: "", success: "" });
+                                                }}
                                                 className="text-sm font-semibold text-primary hover:text-secondary"
                                             >
                                                 Close
                                             </button>
                                         </div>
+                                        {(applyMessages[job.id]?.error || applyMessages[job.id]?.success) && (
+                                            <div className="mt-3">
+                                                {applyMessages[job.id]?.error && (
+                                                    <div className="p-3 bg-accent/20 border border-accent text-primary rounded-lg text-sm">
+                                                        {applyMessages[job.id].error}
+                                                    </div>
+                                                )}
+                                                {applyMessages[job.id]?.success && (
+                                                    <div className="p-3 bg-accent/30 border border-accent text-primary rounded-lg text-sm">
+                                                        {applyMessages[job.id].success}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                         <div className="mt-3 space-y-3">
                                             <input
                                                 type="text"
@@ -349,27 +408,65 @@ const StudentDashboard = () => {
                                                 placeholder="Past experience (optional)"
                                                 className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
                                             />
-                                            <input
-                                                type="text"
-                                                value={applyForm.resumeLink}
-                                                onChange={(e) => setApplyForm((prev) => ({ ...prev, resumeLink: e.target.value }))}
-                                                placeholder="Resume / portfolio link (optional)"
-                                                className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
-                                            />
-                                            <div className="space-y-2">
-                                                <label className="text-sm text-textDark/70 dark:text-darkText/70">
-                                                    Or upload resume (PDF/DOC, max 5MB)
-                                                </label>
-                                                <input
-                                                    type="file"
-                                                    accept=".pdf,.doc,.docx"
-                                                    onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
-                                                    className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
-                                                />
-                                                {resumeFile && (
-                                                    <p className="text-xs text-textDark/60 dark:text-darkText/60">
-                                                        Selected: {resumeFile.name}
-                                                    </p>
+                                            <div className="space-y-3">
+                                                <div className="flex flex-wrap gap-4 text-sm text-textDark/70 dark:text-darkText/70">
+                                                    <label className="flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={includeResume}
+                                                            onChange={(e) => {
+                                                                const checked = e.target.checked;
+                                                                setIncludeResume(checked);
+                                                                if (!checked) {
+                                                                    setResumeFile(null);
+                                                                }
+                                                            }}
+                                                            className="accent-primary"
+                                                        />
+                                                        Resume upload
+                                                    </label>
+                                                    <label className="flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={includePortfolio}
+                                                            onChange={(e) => {
+                                                                const checked = e.target.checked;
+                                                                setIncludePortfolio(checked);
+                                                                if (!checked) {
+                                                                    setApplyForm((prev) => ({ ...prev, resumeLink: "" }));
+                                                                }
+                                                            }}
+                                                            className="accent-primary"
+                                                        />
+                                                        Portfolio link
+                                                    </label>
+                                                </div>
+                                                {includeResume && (
+                                                    <div className="space-y-2">
+                                                        <label className="text-sm text-textDark/70 dark:text-darkText/70">
+                                                            Upload resume (PDF/DOC, max 5MB)
+                                                        </label>
+                                                        <input
+                                                            type="file"
+                                                            accept=".pdf,.doc,.docx"
+                                                            onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+                                                            className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                                        />
+                                                        {resumeFile && (
+                                                            <p className="text-xs text-textDark/60 dark:text-darkText/60">
+                                                                Selected: {resumeFile.name}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {includePortfolio && (
+                                                    <input
+                                                        type="text"
+                                                        value={applyForm.resumeLink}
+                                                        onChange={(e) => setApplyForm((prev) => ({ ...prev, resumeLink: e.target.value }))}
+                                                        placeholder="Portfolio link"
+                                                        className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                                    />
                                                 )}
                                             </div>
                                         </div>
@@ -379,24 +476,32 @@ const StudentDashboard = () => {
                                                 disabled={applyLoading}
                                                 onClick={async () => {
                                                     setApplyLoading(true);
-                                                    setApplyError("");
-                                                    setApplySuccess("");
+                                                    setApplyMessage(job.id, { error: "", success: "" });
                                                     try {
+                                                        const validationMessage = validateApplication();
+                                                        if (validationMessage) {
+                                                            setApplyMessage(job.id, { error: validationMessage, success: "" });
+                                                            return;
+                                                        }
                                                         const formData = new FormData();
-                                                        Object.entries(applyForm).forEach(([key, value]) => {
+                                                        const payload = {
+                                                            ...applyForm,
+                                                            resumeLink: includePortfolio ? applyForm.resumeLink : "",
+                                                        };
+                                                        Object.entries(payload).forEach(([key, value]) => {
                                                             formData.append(key, value || "");
                                                         });
-                                                        if (resumeFile) {
+                                                        if (includeResume && resumeFile) {
                                                             formData.append("resume", resumeFile);
                                                         }
-                                                        await applyToJob(job._id, formData);
-                                                        setApplySuccess("Application submitted successfully.");
+                                                        await applyToJob(job.id, formData);
+                                                        setApplyMessage(job.id, { error: "", success: "Application submitted successfully." });
                                                         setApplyJobId(null);
                                                         setResumeFile(null);
-                                                        const updatedApplications = await getStudentApplications();
-                                                        setApplications(updatedApplications.data || []);
+                                                        setIncludeResume(false);
+                                                        setIncludePortfolio(false);
                                                     } catch (error) {
-                                                        setApplyError(error.response?.data?.message || "Failed to apply");
+                                                        setApplyMessage(job.id, { error: error.response?.data?.message || "Failed to apply", success: "" });
                                                     } finally {
                                                         setApplyLoading(false);
                                                     }
@@ -410,6 +515,283 @@ const StudentDashboard = () => {
                                                 onClick={() => {
                                                     setApplyJobId(null);
                                                     setResumeFile(null);
+                                                    setIncludeResume(false);
+                                                    setIncludePortfolio(false);
+                                                    setApplyMessage(job.id, { error: "", success: "" });
+                                                }}
+                                                className="bg-light dark:bg-darkBorder text-textDark dark:text-darkText px-6 py-2 rounded-lg hover:bg-accent/30 dark:hover:bg-accent/20 transition"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                        {hasMoreRecommendations && (
+                        <div className="mt-6 flex justify-center">
+                            <button
+                                type="button"
+                                    onClick={() => setShowAllRecommendations((prev) => !prev)}
+                                className="text-primary font-semibold text-sm"
+                            >
+                                {showAllRecommendations ? "View less" : "View more"}
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Jobs from clients */}
+                <div className="bg-inputBg dark:bg-darkCard rounded-3xl shadow-lg p-8 border border-light/60 dark:border-darkBorder mb-8" data-aos="fade-up">
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-2xl font-bold text-textDark dark:text-darkText">Jobs from clients</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {jobs.length === 0 && (
+                            <div className="text-textDark/60 dark:text-darkText/60">No jobs available yet.</div>
+                        )}
+                        {jobs.slice(0, 4).map((job, index) => {
+                            const clientProfileImage = job?.createdBy?.profileImage
+                                ? `${backendOrigin}${job.createdBy.profileImage}`
+                                : "";
+                            const clientInitial = (job.companyName || job.createdBy?.name || "Client").charAt(0);
+                            return (
+                            <div key={job._id || `${job.title}-${index}`} className="rounded-2xl border border-light/60 dark:border-darkBorder p-5 bg-white/70 dark:bg-darkCard/70 hover:shadow-md transition" data-aos="fade-up" data-aos-delay={index * 60}>
+                                <div className="flex items-start gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-accent/30 flex items-center justify-center text-primary font-bold overflow-hidden">
+                                        {clientProfileImage ? (
+                                            <img
+                                                src={clientProfileImage}
+                                                alt={`${job.companyName || job.createdBy?.name || "Client"} profile`}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            clientInitial || "C"
+                                        )}
+                                    </div>
+                                    <div>
+                                        <h4 className="font-semibold text-lg text-textDark dark:text-darkText">{job.title}</h4>
+                                        <p className="text-sm text-textDark/60 dark:text-darkText/60">{job.companyName || "Client"}</p>
+                                    </div>
+                                </div>
+                                <p className="text-sm text-textDark/70 dark:text-darkText/70 mt-3">{job.description}</p>
+                                <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.location || "Remote"}</span>
+                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.employmentType || "Flexible"}</span>
+                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.level || "Any level"}</span>
+                                </div>
+                                <div className="mt-4 flex items-center justify-between">
+                                    <div className="text-primary font-semibold text-sm">{job.salary || "Budget discussed"}</div>
+                                    <button
+                                        className="text-primary font-semibold text-sm"
+                                        onClick={() => {
+                                            if (!overview?.hasSkills) {
+                                                setApplySkillWarning("Add skills to apply for jobs.");
+                                                return;
+                                            }
+                                            setApplySkillWarning("");
+                                            setApplyJobId(job._id);
+                                            setApplyForm({
+                                                fullName: profile?.name || "",
+                                                email: profile?.email || "",
+                                                phone: "",
+                                                coverMessage: "",
+                                                experience: "",
+                                                resumeLink: "",
+                                            });
+                                            setResumeFile(null);
+                                            setIncludeResume(false);
+                                            setIncludePortfolio(false);
+                                            setApplyMessage(job._id, { error: "", success: "" });
+                                        }}
+                                    >
+                                        Apply
+                                    </button>
+                                </div>
+                                {applySkillWarning && (
+                                    <div className="mt-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-lg border border-accent/40 bg-accent/10 px-4 py-3">
+                                        <span className="text-sm text-textDark/70 dark:text-darkText/70">
+                                            {applySkillWarning}
+                                        </span>
+                                        <Link to="/student/skills" className="text-primary font-semibold text-sm">
+                                            Add skills
+                                        </Link>
+                                    </div>
+                                )}
+
+                                {applyJobId === job._id && (
+                                    <div className="mt-5 border-t border-light/60 dark:border-darkBorder pt-4">
+                                        <div className="flex items-center justify-between">
+                                            <h5 className="font-semibold text-textDark dark:text-darkText">Application Form</h5>
+                                            <button
+                                                type="button"
+                                                onClick={() => setApplyJobId(null)}
+                                                className="text-sm font-semibold text-primary hover:text-secondary"
+                                            >
+                                                Close
+                                            </button>
+                                        </div>
+                                        {(applyMessages[job._id]?.error || applyMessages[job._id]?.success) && (
+                                            <div className="mt-3">
+                                                {applyMessages[job._id]?.error && (
+                                                    <div className="p-3 bg-accent/20 border border-accent text-primary rounded-lg text-sm">
+                                                        {applyMessages[job._id].error}
+                                                    </div>
+                                                )}
+                                                {applyMessages[job._id]?.success && (
+                                                    <div className="p-3 bg-accent/30 border border-accent text-primary rounded-lg text-sm">
+                                                        {applyMessages[job._id].success}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                        <div className="mt-3 space-y-3">
+                                            <input
+                                                type="text"
+                                                value={applyForm.fullName}
+                                                onChange={(e) => setApplyForm((prev) => ({ ...prev, fullName: e.target.value }))}
+                                                placeholder="Full name"
+                                                className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                            />
+                                            <input
+                                                type="email"
+                                                value={applyForm.email}
+                                                onChange={(e) => setApplyForm((prev) => ({ ...prev, email: e.target.value }))}
+                                                placeholder="Email address"
+                                                className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                            />
+                                            <input
+                                                type="text"
+                                                value={applyForm.phone}
+                                                onChange={(e) => setApplyForm((prev) => ({ ...prev, phone: e.target.value }))}
+                                                placeholder="Contact number"
+                                                className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                            />
+                                            <textarea
+                                                rows={3}
+                                                value={applyForm.coverMessage}
+                                                onChange={(e) => setApplyForm((prev) => ({ ...prev, coverMessage: e.target.value }))}
+                                                placeholder="Cover message"
+                                                className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                            />
+                                            <textarea
+                                                rows={3}
+                                                value={applyForm.experience}
+                                                onChange={(e) => setApplyForm((prev) => ({ ...prev, experience: e.target.value }))}
+                                                placeholder="Past experience (optional)"
+                                                className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                            />
+                                            <div className="space-y-3">
+                                                <div className="flex flex-wrap gap-4 text-sm text-textDark/70 dark:text-darkText/70">
+                                                    <label className="flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={includeResume}
+                                                            onChange={(e) => {
+                                                                const checked = e.target.checked;
+                                                                setIncludeResume(checked);
+                                                                if (!checked) {
+                                                                    setResumeFile(null);
+                                                                }
+                                                            }}
+                                                            className="accent-primary"
+                                                        />
+                                                        Resume upload
+                                                    </label>
+                                                    <label className="flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={includePortfolio}
+                                                            onChange={(e) => {
+                                                                const checked = e.target.checked;
+                                                                setIncludePortfolio(checked);
+                                                                if (!checked) {
+                                                                    setApplyForm((prev) => ({ ...prev, resumeLink: "" }));
+                                                                }
+                                                            }}
+                                                            className="accent-primary"
+                                                        />
+                                                        Portfolio link
+                                                    </label>
+                                                </div>
+                                                {includeResume && (
+                                                    <div className="space-y-2">
+                                                        <label className="text-sm text-textDark/70 dark:text-darkText/70">
+                                                            Upload resume (PDF/DOC, max 5MB)
+                                                        </label>
+                                                        <input
+                                                            type="file"
+                                                            accept=".pdf,.doc,.docx"
+                                                            onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+                                                            className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                                        />
+                                                        {resumeFile && (
+                                                            <p className="text-xs text-textDark/60 dark:text-darkText/60">
+                                                                Selected: {resumeFile.name}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {includePortfolio && (
+                                                    <input
+                                                        type="text"
+                                                        value={applyForm.resumeLink}
+                                                        onChange={(e) => setApplyForm((prev) => ({ ...prev, resumeLink: e.target.value }))}
+                                                        placeholder="Portfolio link"
+                                                        className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                                    />
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 flex flex-col md:flex-row gap-3">
+                                            <button
+                                                type="button"
+                                                disabled={applyLoading}
+                                                onClick={async () => {
+                                                    setApplyLoading(true);
+                                                    setApplyMessage(job._id, { error: "", success: "" });
+                                                    try {
+                                                        const validationMessage = validateApplication();
+                                                        if (validationMessage) {
+                                                            setApplyMessage(job._id, { error: validationMessage, success: "" });
+                                                            return;
+                                                        }
+                                                        const formData = new FormData();
+                                                        const payload = {
+                                                            ...applyForm,
+                                                            resumeLink: includePortfolio ? applyForm.resumeLink : "",
+                                                        };
+                                                        Object.entries(payload).forEach(([key, value]) => {
+                                                            formData.append(key, value || "");
+                                                        });
+                                                        if (includeResume && resumeFile) {
+                                                            formData.append("resume", resumeFile);
+                                                        }
+                                                        await applyToJob(job._id, formData);
+                                                        setApplyMessage(job._id, { error: "", success: "Application submitted successfully." });
+                                                        setApplyJobId(null);
+                                                        setResumeFile(null);
+                                                        setIncludeResume(false);
+                                                        setIncludePortfolio(false);
+                                                    } catch (error) {
+                                                        setApplyMessage(job._id, { error: error.response?.data?.message || "Failed to apply", success: "" });
+                                                    } finally {
+                                                        setApplyLoading(false);
+                                                    }
+                                                }}
+                                                className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-secondary transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {applyLoading ? "Submitting..." : "Submit Application"}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setApplyJobId(null);
+                                                    setResumeFile(null);
+                                                    setIncludeResume(false);
+                                                    setIncludePortfolio(false);
+                                                    setApplyMessage(job._id, { error: "", success: "" });
                                                 }}
                                                 className="bg-light dark:bg-darkBorder text-textDark dark:text-darkText px-6 py-2 rounded-lg hover:bg-accent/30 dark:hover:bg-accent/20 transition"
                                             >
@@ -422,120 +804,13 @@ const StudentDashboard = () => {
                             );
                         })}
                     </div>
+                    {jobs.length > 4 && (
+                        <div className="mt-6 flex justify-center">
+                            <Link to="/student/jobs" className="text-primary font-semibold text-sm">View more jobs</Link>
+                        </div>
+                    )}
                 </div>
 
-                {/* My Applications */}
-                <div className="bg-inputBg dark:bg-darkCard rounded-3xl shadow-lg p-8 border border-light/60 dark:border-darkBorder mb-8" data-aos="fade-up">
-                    <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-2xl font-bold text-textDark dark:text-darkText">My applications</h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {applications.filter((app) => app.status === "pending" || app.status === "hired").length === 0 && (
-                            <div className="text-textDark/60 dark:text-darkText/60">No applications yet.</div>
-                        )}
-                        {applications
-                            .filter((app) => app.status === "pending" || app.status === "hired")
-                            .map((app) => (
-                                <div key={app._id} className="rounded-2xl border border-light/60 dark:border-darkBorder p-5 bg-white/70 dark:bg-darkCard/70">
-                                    <div className="flex items-start justify-between">
-                                        <div>
-                                            <h4 className="font-semibold text-lg text-textDark dark:text-darkText">
-                                                {app.jobId?.title || "Job"}
-                                            </h4>
-                                            <p className="text-sm text-textDark/60 dark:text-darkText/60">
-                                                {app.jobId?.companyName || "Client"}
-                                            </p>
-                                        </div>
-                                        <span className={`px-2 py-1 rounded text-xs ${
-                                            app.status === "hired"
-                                                ? "bg-accent/40 text-primary"
-                                                : "bg-accent/20 text-primary"
-                                        }`}>
-                                            {app.status}
-                                        </span>
-                                    </div>
-                                    <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                                        <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{app.jobId?.location || "Remote"}</span>
-                                        <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{app.jobId?.employmentType || "Flexible"}</span>
-                                        <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{app.jobId?.level || "Any level"}</span>
-                                    </div>
-                                    {app.status === "hired" && (
-                                        <div className="mt-4">
-                                            <button
-                                                type="button"
-                                                onClick={async () => {
-                                                    await completeApplication(app.jobId?._id, app._id);
-                                                    const updatedApplications = await getStudentApplications();
-                                                    const updatedHistory = await getStudentHistory();
-                                                    setApplications(updatedApplications.data || []);
-                                                    setHistory(updatedHistory.data || []);
-                                                }}
-                                                className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-secondary transition"
-                                            >
-                                                Mark completed
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                    </div>
-                </div>
-
-                {/* Job History */}
-                <div className="bg-inputBg dark:bg-darkCard rounded-3xl shadow-lg p-8 border border-light/60 dark:border-darkBorder mb-8" data-aos="fade-up">
-                    <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-2xl font-bold text-textDark dark:text-darkText">Job history</h3>
-                        {history.length > 0 && (
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    await clearStudentHistory();
-                                    setHistory([]);
-                                }}
-                                className="text-primary font-semibold text-sm"
-                            >
-                                Clear history
-                            </button>
-                        )}
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {history.length === 0 && (
-                            <div className="text-textDark/60 dark:text-darkText/60">No completed jobs yet.</div>
-                        )}
-                        {history.map((app) => (
-                            <div key={app._id} className="rounded-2xl border border-light/60 dark:border-darkBorder p-5 bg-white/70 dark:bg-darkCard/70">
-                                <div className="flex items-start justify-between">
-                                    <div>
-                                        <h4 className="font-semibold text-lg text-textDark dark:text-darkText">
-                                            {app.jobId?.title || "Job"}
-                                        </h4>
-                                        <p className="text-sm text-textDark/60 dark:text-darkText/60">
-                                            {app.jobId?.companyName || "Client"}
-                                        </p>
-                                    </div>
-                                    <span className="px-2 py-1 rounded text-xs bg-accent/40 text-primary">completed</span>
-                                </div>
-                                <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{app.jobId?.location || "Remote"}</span>
-                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{app.jobId?.employmentType || "Flexible"}</span>
-                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{app.jobId?.level || "Any level"}</span>
-                                </div>
-                                <div className="mt-4">
-                                    <button
-                                        type="button"
-                                        onClick={async () => {
-                                            await archiveStudentApplication(app._id);
-                                            setHistory((prev) => prev.filter((item) => item._id !== app._id));
-                                        }}
-                                        className="text-primary font-semibold text-sm"
-                                    >
-                                        Remove
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
 
                 {/* Actions */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6" data-aos="fade-up">
@@ -543,10 +818,10 @@ const StudentDashboard = () => {
                         <h4 className="font-semibold text-lg text-textDark dark:text-darkText">Build your skill profile</h4>
                         <p className="text-textDark/60 dark:text-darkText/60 text-sm mt-2">Add skills, availability, and portfolio.</p>
                     </Link>
-                    <div className="bg-inputBg dark:bg-darkCard rounded-2xl p-6 border border-light/60 dark:border-darkBorder hover:shadow-md transition">
+                    <Link to="/student/jobs" className="bg-inputBg dark:bg-darkCard rounded-2xl p-6 border border-light/60 dark:border-darkBorder hover:shadow-md transition">
                         <h4 className="font-semibold text-lg text-textDark dark:text-darkText">Track applications</h4>
                         <p className="text-textDark/60 dark:text-darkText/60 text-sm mt-2">View your responses and shortlists.</p>
-                    </div>
+                    </Link>
                     <div className="bg-inputBg dark:bg-darkCard rounded-2xl p-6 border border-light/60 dark:border-darkBorder hover:shadow-md transition">
                         <h4 className="font-semibold text-lg text-textDark dark:text-darkText">Trust & safety</h4>
                         <p className="text-textDark/60 dark:text-darkText/60 text-sm mt-2">Fraud checks and verified clients only.</p>

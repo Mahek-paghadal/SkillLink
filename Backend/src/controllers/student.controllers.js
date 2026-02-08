@@ -1,7 +1,9 @@
 const User = require("../models/User");
 const Student = require("../models/Student");
+const Job = require("../models/Job");
 const JobPick = require("../models/JobPick");
 const JobOpportunity = require("../models/JobOpportunity");
+const { getContentRecommendations } = require("../services/recommendation.service");
 
 const fallbackRecommendations = [
     {
@@ -43,7 +45,7 @@ const fallbackRecommendations = [
 ];
 
 const getProfileCompletion = (user, studentProfile) => {
-    let score = 40;
+    let score = 30;
     if (user?.name) score += 20;
     if (user?.email) score += 20;
     if (user?.profileImage) score += 20;
@@ -277,14 +279,32 @@ exports.getStudentOverview = async (req, res) => {
         const skills = studentProfile?.skills || [];
         const hasSkills = skills.length > 0;
 
-        const [recommendations, totalRecommendations, nearbyCount] = await Promise.all([
+        const [fallbackJobs, totalRecommendations, nearbyCount, openJobs] = await Promise.all([
             JobPick.find().sort({ createdAt: -1 }).limit(6),
             JobPick.countDocuments(),
             JobOpportunity.countDocuments(),
+            Job.find({ status: "open" }).sort({ createdAt: -1 }).lean(),
         ]);
 
         const profileCompletion = getProfileCompletion(user, studentProfile);
-        const resolvedRecommendations = recommendations.length > 0 ? recommendations : fallbackRecommendations;
+        const scoredRecommendations = hasSkills
+            ? getContentRecommendations(skills, openJobs, 6)
+            : [];
+        const resolvedRecommendations = scoredRecommendations.length > 0
+            ? scoredRecommendations.map((item) => ({
+                  _id: item.job._id,
+                  title: item.job.title,
+                  company: item.job.companyName || "Client",
+                  location: item.job.location || "Remote",
+                  employmentType: item.job.employmentType || "Flexible",
+                  level: item.job.level || "Any level",
+                  salary: item.job.salary || "",
+                  tags: item.job.tags || [],
+                  score: item.score,
+              }))
+            : fallbackJobs.length > 0
+                ? fallbackJobs
+                : fallbackRecommendations;
 
         res.json({
             profile: user,
@@ -294,7 +314,7 @@ exports.getStudentOverview = async (req, res) => {
             hasSkills,
             stats: {
                 profileCompletion,
-                totalRecommendations: totalRecommendations || resolvedRecommendations.length,
+                totalRecommendations: hasSkills ? resolvedRecommendations.length : totalRecommendations || resolvedRecommendations.length,
                 nearbyOpportunities: nearbyCount || 0,
                 activeApplications: 0,
                 matchScore: 92,
@@ -316,6 +336,35 @@ exports.getStudentOverview = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ message: "Failed to load student dashboard" });
+    }
+};
+
+exports.getStudentRecommendations = async (req, res) => {
+    try {
+        const studentProfile = await Student.findOne({ userId: req.user.userId });
+        const skills = studentProfile?.skills || [];
+        if (!skills.length) {
+            return res.json({ recommendations: [] });
+        }
+
+        const openJobs = await Job.find({ status: "open" }).sort({ createdAt: -1 }).lean();
+        const scoredRecommendations = getContentRecommendations(skills, openJobs, 10);
+
+        const recommendations = scoredRecommendations.map((item) => ({
+            _id: item.job._id,
+            title: item.job.title,
+            company: item.job.companyName || "Client",
+            location: item.job.location || "Remote",
+            employmentType: item.job.employmentType || "Flexible",
+            level: item.job.level || "Any level",
+            salary: item.job.salary || "",
+            tags: item.job.tags || [],
+            score: item.score,
+        }));
+
+        res.json({ recommendations });
+    } catch (error) {
+        res.status(500).json({ message: "Failed to load recommendations" });
     }
 };
 

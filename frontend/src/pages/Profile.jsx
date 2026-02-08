@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { getProfile, logoutUser, uploadProfileImage, removeProfileImage } from "../api/authApi";
 import { updateStudentSkills } from "../api/studentApi";
+import { getJobs } from "../api/jobApi";
 import { removeToken } from "../utils/auth";
 
 const Profile = () => {
@@ -15,6 +16,7 @@ const Profile = () => {
   const [skillInput, setSkillInput] = useState("");
   const [skillsSaving, setSkillsSaving] = useState(false);
   const [skillsError, setSkillsError] = useState("");
+  const [savedJobs, setSavedJobs] = useState([]);
   const navigate = useNavigate();
 
   const apiBase = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
@@ -28,6 +30,14 @@ const Profile = () => {
         setUser(res.data);
         if (res.data?.role === "student") {
           setSkills(res.data?.skills || []);
+          const savedIds = JSON.parse(localStorage.getItem("skilllink.savedJobs") || "[]");
+          if (savedIds.length > 0) {
+            const jobsRes = await getJobs();
+            const saved = (jobsRes.data || []).filter((job) => savedIds.includes(job._id));
+            setSavedJobs(saved);
+          } else {
+            setSavedJobs([]);
+          }
         }
       } catch (err) {
         setError("Failed to load profile");
@@ -275,6 +285,30 @@ const Profile = () => {
                   >
                     {skillsSaving ? "Saving..." : "Save Skills"}
                   </button>
+                </div>
+              </div>
+              <div className="bg-white/70 dark:bg-darkCard/70 border border-light/60 dark:border-darkBorder rounded-2xl p-6 mt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-bold text-textDark dark:text-darkText">Saved jobs</h3>
+                    <p className="text-textDark/60 dark:text-darkText/60 text-sm mt-1">Quick access to jobs you saved.</p>
+                  </div>
+                  <Link to="/student/jobs?saved=1" className="text-primary font-semibold text-sm">View more</Link>
+                </div>
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {savedJobs.length === 0 && (
+                    <div className="text-textDark/60 dark:text-darkText/60">No saved jobs yet.</div>
+                  )}
+                  {savedJobs.slice(0, 2).map((job) => (
+                    <div key={job._id} className="rounded-2xl border border-light/60 dark:border-darkBorder p-4 bg-white/80 dark:bg-darkCard/80">
+                      <h4 className="font-semibold text-textDark dark:text-darkText">{job.title}</h4>
+                      <p className="text-sm text-textDark/60 dark:text-darkText/60">{job.companyName || "Client"}</p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.location || "Remote"}</span>
+                        <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.employmentType || "Flexible"}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

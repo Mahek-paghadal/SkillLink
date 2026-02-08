@@ -2,9 +2,11 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
+const swaggerUi = require('swagger-ui-express');
 
 
 const connectDB = require("./config/db");
+const { swaggerSpec } = require("./docs/swagger");
 
 const app = express();
 
@@ -16,6 +18,9 @@ app.use(cors());
 app.use(express.json());
 
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
+/// Swagger docs
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 /// Routes
 app.use("/api/auth" , require("./routes/auth.routes"));
