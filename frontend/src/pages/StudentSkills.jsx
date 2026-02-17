@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getStudentProfile, updateStudentSkills } from "../api/studentApi";
+import { getJobs } from "../api/jobApi";
 
 const StudentSkills = () => {
     const navigate = useNavigate();
     const [skills, setSkills] = useState([]);
-    const [skillInput, setSkillInput] = useState("");
+    const [availableSkills, setAvailableSkills] = useState([]);
+    const [selectedSkill, setSelectedSkill] = useState("");
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
@@ -14,8 +16,16 @@ const StudentSkills = () => {
     useEffect(() => {
         const fetchSkills = async () => {
             try {
-                const res = await getStudentProfile();
-                setSkills(res.data?.skills || []);
+                const [profileRes, jobsRes] = await Promise.all([
+                    getStudentProfile(),
+                    getJobs(),
+                ]);
+                setSkills(profileRes.data?.skills || []);
+                const tags = (jobsRes.data || [])
+                    .flatMap((job) => job.tags || [])
+                    .map((tag) => String(tag).trim())
+                    .filter(Boolean);
+                setAvailableSkills(Array.from(new Set(tags)).sort());
             } catch (err) {
                 navigate("/");
             } finally {
@@ -27,14 +37,13 @@ const StudentSkills = () => {
     }, [navigate]);
 
     const addSkill = () => {
-        const trimmed = skillInput.trim();
-        if (!trimmed) return;
-        if (skills.includes(trimmed)) {
-            setSkillInput("");
+        if (!selectedSkill) return;
+        if (skills.includes(selectedSkill)) {
+            setSelectedSkill("");
             return;
         }
-        setSkills((prev) => [...prev, trimmed]);
-        setSkillInput("");
+        setSkills((prev) => [...prev, selectedSkill]);
+        setSelectedSkill("");
     };
 
     const removeSkill = (skill) => {
@@ -84,13 +93,18 @@ const StudentSkills = () => {
 
                 <div className="bg-inputBg dark:bg-darkCard rounded-3xl shadow-lg p-8 border border-light/60 dark:border-darkBorder">
                     <div className="flex flex-col md:flex-row gap-4">
-                        <input
-                            type="text"
-                            value={skillInput}
-                            onChange={(e) => setSkillInput(e.target.value)}
-                            placeholder="Add a skill (e.g., Canva, Java, Tutoring)"
+                        <select
+                            value={selectedSkill}
+                            onChange={(e) => setSelectedSkill(e.target.value)}
                             className="flex-1 px-4 py-3 bg-white/70 dark:bg-darkCard/70 border border-light/60 dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
-                        />
+                        >
+                            <option value="">Select a skill</option>
+                            {availableSkills.map((skill) => (
+                                <option key={skill} value={skill}>
+                                    {skill}
+                                </option>
+                            ))}
+                        </select>
                         <button
                             type="button"
                             onClick={addSkill}
@@ -99,6 +113,11 @@ const StudentSkills = () => {
                             Add skill
                         </button>
                     </div>
+                    {availableSkills.length === 0 && (
+                        <div className="mt-3 text-sm text-textDark/60 dark:text-darkText/60">
+                            No skills found from current jobs.
+                        </div>
+                    )}
 
                     {error && (
                         <div className="mt-4 p-3 bg-accent/20 border border-accent text-primary rounded-lg text-sm">

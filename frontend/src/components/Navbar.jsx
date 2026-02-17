@@ -1,14 +1,24 @@
 import { Link, useLocation } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
 import { isAuthenticated, getUserRole } from "../utils/auth";
 import { getProfile } from "../api/authApi";
+import {
+  getNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from "../api/notificationApi";
 
 const Navbar = () => {
   const location = useLocation();
   const [authed, setAuthed] = useState(isAuthenticated());
   const [role, setRole] = useState(authed ? getUserRole() : null);
   const [profileImage, setProfileImage] = useState("");
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const notificationRef = useRef(null);
 
   const apiBase = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
   const backendOrigin = apiBase.replace(/\/api\/?$/, "");
@@ -40,6 +50,55 @@ const Navbar = () => {
       window.removeEventListener('profile-updated', handler);
     };
   }, []);
+
+  useEffect(() => {
+    if (!authed) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+
+    const fetchNotifications = async () => {
+      setNotificationsLoading(true);
+      try {
+        const res = await getNotifications({ limit: 10 });
+        setNotifications(res.data?.notifications || []);
+        setUnreadCount(res.data?.unreadCount || 0);
+      } catch (e) {
+        setNotifications([]);
+        setUnreadCount(0);
+      } finally {
+        setNotificationsLoading(false);
+      }
+    };
+
+    fetchNotifications();
+    const refreshId = window.setInterval(fetchNotifications, 60000);
+    window.addEventListener("notifications-updated", fetchNotifications);
+    return () => {
+      window.clearInterval(refreshId);
+      window.removeEventListener("notifications-updated", fetchNotifications);
+    };
+  }, [authed]);
+
+  useEffect(() => {
+    setShowNotifications(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!showNotifications) return;
+
+    const handleClickOutside = (event) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setShowNotifications(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showNotifications]);
 
   const getHomePath = () => {
     if (!authed) return "/";
@@ -95,6 +154,83 @@ const Navbar = () => {
             >
               Dashboard
             </Link>
+          )}
+          {authed && !isAuthPage && (
+            <div className="relative" ref={notificationRef}>
+              <button
+                type="button"
+                onClick={() => setShowNotifications((prev) => !prev)}
+                className="relative w-9 h-9 rounded-full bg-accent/30 dark:bg-darkBorder flex items-center justify-center hover:ring-2 ring-primary transition"
+                aria-label="Notifications"
+              >
+                <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.4-1.4a2 2 0 01-.6-1.4V11a6 6 0 10-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0a3 3 0 11-6 0h6z" />
+                </svg>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-white text-[10px] font-semibold flex items-center justify-center">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
+              {showNotifications && (
+                <div className="absolute right-0 mt-3 w-80 rounded-2xl border border-light/60 dark:border-darkBorder bg-white dark:bg-darkCard shadow-xl p-4 z-50">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-sm font-semibold text-textDark dark:text-darkText">Notifications</div>
+                    {notifications.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await markAllNotificationsRead();
+                          setNotifications([]);
+                          setUnreadCount(0);
+                        }}
+                        className="text-xs font-semibold text-primary"
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+                  {notificationsLoading && (
+                    <div className="text-sm text-textDark/60 dark:text-darkText/60">Loading...</div>
+                  )}
+                  {!notificationsLoading && notifications.length === 0 && (
+                    <div className="text-sm text-textDark/60 dark:text-darkText/60">No notifications yet.</div>
+                  )}
+                  <div className="space-y-3">
+                    {notifications.map((item) => (
+                      <Link
+                        key={item._id}
+                        to={item.link || getHomePath()}
+                        onClick={async () => {
+                          if (!item.isRead) {
+                            await markNotificationRead(item._id);
+                            setNotifications((prev) =>
+                              prev.map((entry) =>
+                                entry._id === item._id ? { ...entry, isRead: true } : entry
+                              )
+                            );
+                            setUnreadCount((prev) => Math.max(prev - 1, 0));
+                          }
+                          setShowNotifications(false);
+                        }}
+                        className={`block rounded-xl border px-3 py-2 transition ${
+                          item.isRead
+                            ? "border-light/60 dark:border-darkBorder bg-light/40 dark:bg-darkBorder/40"
+                            : "border-primary/40 bg-primary/10"
+                        }`}
+                      >
+                        <div className="text-xs font-semibold text-textDark dark:text-darkText">
+                          {item.title || "Update"}
+                        </div>
+                        <div className="text-xs text-textDark/60 dark:text-darkText/60">
+                          {item.message}
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           {authed && !isAuthPage && (
             <Link

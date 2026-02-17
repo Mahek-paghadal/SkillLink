@@ -6,6 +6,7 @@ import StudentDashboard from "./pages/StudentDashboard";
 import StudentJobs from "./pages/StudentJobs";
 import StudentSkills from "./pages/StudentSkills";
 import ClientDashboard from "./pages/ClientDashboard";
+import ClientJobs from "./pages/ClientJobs";
 import AdminDashboard from "./pages/AdminDashboard";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
@@ -83,6 +84,14 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={["client"]}>
               <ClientDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/client/jobs"
+          element={
+            <ProtectedRoute allowedRoles={["client"]}>
+              <ClientJobs />
             </ProtectedRoute>
           }
         />

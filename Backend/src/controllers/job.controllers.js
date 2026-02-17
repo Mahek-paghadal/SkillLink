@@ -2,6 +2,7 @@ const Job = require("../models/Job");
 const Application = require("../models/Application");
 const User = require("../models/User");
 const Student = require("../models/Student");
+const Notification = require("../models/Notification");
 const sendEmail = require("../utils/sendEmail");
 const path = require("path");
 
@@ -10,6 +11,21 @@ const sanitizeTags = (tags) => {
     return tags
         .map((tag) => (typeof tag === "string" ? tag.trim() : ""))
         .filter((tag) => tag.length > 0);
+};
+
+const createNotification = async ({ userId, title, message, type = "info", link = "" }) => {
+    if (!userId) return;
+    try {
+        await Notification.create({
+            userId,
+            title,
+            message,
+            type,
+            link,
+        });
+    } catch (error) {
+        // Notification failures should not break primary flows.
+    }
 };
 
 exports.listJobs = async (req, res) => {
@@ -103,7 +119,16 @@ exports.deleteJob = async (req, res) => {
 
 exports.getClientJobs = async (req, res) => {
     try {
-        const jobs = await Job.find({ createdBy: req.user.userId }).sort({ createdAt: -1 });
+        const statusFilter = typeof req.query.status === "string" ? req.query.status : "open";
+        const query = { createdBy: req.user.userId };
+
+        if (statusFilter === "open") {
+            query.status = "open";
+        } else if (statusFilter === "closed") {
+            query.status = { $in: ["closed", "completed"] };
+        }
+
+        const jobs = await Job.find(query).sort({ createdAt: -1 });
         res.json(jobs);
     } catch (error) {
         res.status(500).json({ message: "Failed to load jobs" });
@@ -289,6 +314,14 @@ exports.applyForJob = async (req, res) => {
             });
         }
 
+        await createNotification({
+            userId: job.createdBy,
+            title: "New application",
+            message: `${application.studentName || "A student"} applied for ${job.title}.`,
+            type: "application",
+            link: "/client/dashboard",
+        });
+
         res.status(201).json({ message: "Application submitted", application });
     } catch (error) {
         res.status(500).json({ message: "Failed to apply" });
@@ -309,6 +342,7 @@ exports.hireApplicant = async (req, res) => {
         }
 
         application.status = "hired";
+        application.hiredAt = new Date();
         await application.save();
 
         job.status = "closed";
@@ -331,6 +365,14 @@ exports.hireApplicant = async (req, res) => {
             });
         }
 
+        await createNotification({
+            userId: application.studentId,
+            title: "You're hired",
+            message: `You were hired for ${job.title}.`,
+            type: "status",
+            link: "/student/jobs",
+        });
+
         res.json({ message: "Applicant hired", application });
     } catch (error) {
         res.status(500).json({ message: "Failed to hire applicant" });
@@ -351,8 +393,32 @@ exports.completeApplication = async (req, res) => {
             return res.status(404).json({ message: "Application not found" });
         }
 
+        const job = await Job.findById(jobId).select("title").lean();
+        const client = await User.findById(application.clientId);
+
         application.status = "completed";
+        application.completedAt = new Date();
         await application.save();
+
+        if (client?.email) {
+            await sendEmail({
+                to: client.email,
+                subject: `Job completed: ${job?.title || "Job"}`,
+                html: `
+                    <h2>Job marked completed</h2>
+                    <p>The student marked <strong>${job?.title || "a job"}</strong> as completed.</p>
+                    <p>Please review the work and leave feedback.</p>
+                `,
+            });
+        }
+
+        await createNotification({
+            userId: application.clientId,
+            title: "Job marked completed",
+            message: `${application.studentName || "A student"} marked ${job?.title || "a job"} as completed.`,
+            type: "status",
+            link: "/client/dashboard",
+        });
 
         res.json({ message: "Job marked as completed", application });
     } catch (error) {
@@ -393,9 +459,64 @@ exports.rejectApplicant = async (req, res) => {
             });
         }
 
+        await createNotification({
+            userId: application.studentId,
+            title: "Application update",
+            message: `Your application for ${job.title} was not accepted.`,
+            type: "status",
+            link: "/student/jobs",
+        });
+
         res.json({ message: "Application rejected", application });
     } catch (error) {
         res.status(500).json({ message: "Failed to reject applicant" });
+    }
+};
+
+exports.submitClientReview = async (req, res) => {
+    try {
+        const { jobId, applicationId } = req.params;
+        const { rating, review } = req.body;
+
+        const numericRating = Number(rating);
+        if (!Number.isFinite(numericRating) || numericRating < 1 || numericRating > 5) {
+            return res.status(400).json({ message: "Rating must be between 1 and 5" });
+        }
+
+        const job = await Job.findOne({ _id: jobId, createdBy: req.user.userId });
+        if (!job) {
+            return res.status(404).json({ message: "Job not found" });
+        }
+
+        const application = await Application.findOne({ _id: applicationId, jobId: job._id });
+        if (!application) {
+            return res.status(404).json({ message: "Application not found" });
+        }
+
+        if (application.status !== "completed") {
+            return res.status(400).json({ message: "Job must be completed before reviewing" });
+        }
+
+        if (application.clientRating) {
+            return res.status(400).json({ message: "Review already submitted" });
+        }
+
+        application.clientRating = numericRating;
+        application.clientReview = typeof review === "string" ? review.trim() : "";
+        application.reviewedAt = new Date();
+        await application.save();
+
+        await createNotification({
+            userId: application.studentId,
+            title: "New review",
+            message: `You received a review for ${job.title}.`,
+            type: "review",
+            link: "/profile",
+        });
+
+        res.json({ message: "Review submitted", application });
+    } catch (error) {
+        res.status(500).json({ message: "Failed to submit review" });
     }
 };
 

@@ -11,11 +11,16 @@ const applicationSchema = new mongoose.Schema(
         coverMessage: { type: String, default: "", trim: true },
         experience: { type: String, default: "", trim: true },
         resumeLink: { type: String, default: "", trim: true },
-    resumeFile: { type: String, default: "", trim: true },
-    resumeFileName: { type: String, default: "", trim: true },
+        resumeFile: { type: String, default: "", trim: true },
+        resumeFileName: { type: String, default: "", trim: true },
         studentSkills: [{ type: String, trim: true }],
         status: { type: String, enum: ["pending", "hired", "rejected", "completed"], default: "pending" },
         archivedByStudent: { type: Boolean, default: false },
+        clientRating: { type: Number, min: 1, max: 5 },
+        clientReview: { type: String, default: "", trim: true },
+        reviewedAt: { type: Date },
+        hiredAt: { type: Date },
+        completedAt: { type: Date },
     },
     { timestamps: true }
 );

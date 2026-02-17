@@ -28,6 +28,7 @@ app.use("/api/admin", require("./routes/admin.routes"));
 app.use("/api/landing", require("./routes/landing.routes"));
 app.use("/api/student", require("./routes/student.routes"));
 app.use("/api/jobs", require("./routes/job.routes"));
+app.use("/api/notifications", require("./routes/notification.routes"));
 
 
 /// health check

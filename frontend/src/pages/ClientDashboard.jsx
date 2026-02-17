@@ -6,13 +6,11 @@ import {
     deleteJob,
     getApplicants,
     getClientJobs,
-    getClientHistory,
     hireApplicant,
     rejectApplicant,
     closeJob,
-    archiveClientJob,
-    clearClientHistory,
     updateJob,
+    submitClientReview,
 } from "../api/jobApi";
 
 const ClientDashboard = () => {
@@ -33,26 +31,19 @@ const ClientDashboard = () => {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
     const [applicantsByJob, setApplicantsByJob] = useState({});
-    const [history, setHistory] = useState([]);
+    const [reviewForms, setReviewForms] = useState({});
+    const [reviewSubmitting, setReviewSubmitting] = useState({});
+    const [reviewErrors, setReviewErrors] = useState({});
     const navigate = useNavigate();
     const apiBase = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
     const backendOrigin = apiBase.replace(/\/api\/?$/, "");
 
     const fetchJobs = async () => {
         try {
-            const res = await getClientJobs();
+            const res = await getClientJobs({ status: "open" });
             setJobs(res.data || []);
         } catch (e) {
             console.error("Failed to load jobs:", e);
-        }
-    };
-
-    const fetchHistory = async () => {
-        try {
-            const res = await getClientHistory();
-            setHistory(res.data || []);
-        } catch (e) {
-            console.error("Failed to load history:", e);
         }
     };
 
@@ -71,7 +62,6 @@ const ClientDashboard = () => {
         };
         fetchProfile();
         fetchJobs();
-        fetchHistory();
     }, [navigate]);
 
     const stats = useMemo(() => {
@@ -120,6 +110,15 @@ const ClientDashboard = () => {
                         Welcome to your dashboard
                     </h2>
                     <p className="text-textDark/70 dark:text-darkText/70">Client Account</p>
+                    <div className="mt-4">
+                        <button
+                            type="button"
+                            onClick={() => navigate("/client/jobs")}
+                            className="text-primary font-semibold text-sm"
+                        >
+                            View all jobs
+                        </button>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
@@ -349,7 +348,6 @@ const ClientDashboard = () => {
                                             onClick={async () => {
                                                 await closeJob(job._id);
                                                 await fetchJobs();
-                                                await fetchHistory();
                                             }}
                                             className="text-primary font-semibold"
                                         >
@@ -391,6 +389,7 @@ const ClientDashboard = () => {
                                                     ? `${backendOrigin}${app.studentId.profileImage}`
                                                     : "";
                                                 const studentInitial = (app.studentName || app.studentId?.name || "Student").charAt(0);
+                                                const currentReview = reviewForms[app._id] || { rating: 5, review: "" };
                                                 return (
                                                 <div key={app._id} className="rounded-xl border border-light/60 dark:border-darkBorder p-4 bg-inputBg dark:bg-darkCard">
                                                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -438,7 +437,6 @@ const ClientDashboard = () => {
                                                                                 [job._id]: res.data,
                                                                             }));
                                                                             await fetchJobs();
-                                                                            await fetchHistory();
                                                                         }}
                                                                         className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-secondary transition"
                                                                     >
@@ -483,6 +481,88 @@ const ClientDashboard = () => {
                                                     {app.coverMessage && (
                                                         <p className="text-sm text-textDark/70 dark:text-darkText/70 mt-3">{app.coverMessage}</p>
                                                     )}
+                                                    {app.status === "completed" && (
+                                                        <div className="mt-4 border-t border-light/60 dark:border-darkBorder pt-4">
+                                                            <h6 className="text-sm font-semibold text-textDark dark:text-darkText">Client review</h6>
+                                                            {app.clientRating ? (
+                                                                <div className="mt-2 text-sm text-textDark/70 dark:text-darkText/70">
+                                                                    <div>Rating: {app.clientRating}★</div>
+                                                                    {app.clientReview && (
+                                                                        <div className="mt-1">{app.clientReview}</div>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="mt-3 space-y-3">
+                                                                    {reviewErrors[app._id] && (
+                                                                        <div className="p-3 bg-accent/20 border border-accent text-primary rounded-lg text-sm">
+                                                                            {reviewErrors[app._id]}
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="flex flex-wrap items-center gap-3">
+                                                                        <label className="text-sm text-textDark/70 dark:text-darkText/70">Rating</label>
+                                                                        <select
+                                                                            value={currentReview.rating}
+                                                                            onChange={(e) =>
+                                                                                setReviewForms((prev) => ({
+                                                                                    ...prev,
+                                                                                    [app._id]: {
+                                                                                        ...currentReview,
+                                                                                        rating: Number(e.target.value),
+                                                                                    },
+                                                                                }))
+                                                                            }
+                                                                            className="px-3 py-2 rounded-lg border border-light dark:border-darkBorder bg-inputBg dark:bg-darkCard text-textDark dark:text-darkText"
+                                                                        >
+                                                                            {[5, 4, 3, 2, 1].map((value) => (
+                                                                                <option key={value} value={value}>{value}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
+                                                                    <textarea
+                                                                        rows={3}
+                                                                        value={currentReview.review}
+                                                                        onChange={(e) =>
+                                                                            setReviewForms((prev) => ({
+                                                                                ...prev,
+                                                                                [app._id]: {
+                                                                                    ...currentReview,
+                                                                                    review: e.target.value,
+                                                                                },
+                                                                            }))
+                                                                        }
+                                                                        placeholder="Share feedback about the student"
+                                                                        className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                                                    />
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={reviewSubmitting[app._id]}
+                                                                        onClick={async () => {
+                                                                            setReviewErrors((prev) => ({ ...prev, [app._id]: "" }));
+                                                                            setReviewSubmitting((prev) => ({ ...prev, [app._id]: true }));
+                                                                            try {
+                                                                                await submitClientReview(job._id, app._id, currentReview);
+                                                                                const res = await getApplicants(job._id);
+                                                                                setApplicantsByJob((prev) => ({
+                                                                                    ...prev,
+                                                                                    [job._id]: res.data,
+                                                                                }));
+                                                                            } catch (e) {
+                                                                                setReviewErrors((prev) => ({
+                                                                                    ...prev,
+                                                                                    [app._id]: e.response?.data?.message || "Failed to submit review",
+                                                                                }));
+                                                                            } finally {
+                                                                                setReviewSubmitting((prev) => ({ ...prev, [app._id]: false }));
+                                                                            }
+                                                                        }}
+                                                                        className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-secondary transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                    >
+                                                                        {reviewSubmitting[app._id] ? "Submitting..." : "Submit review"}
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                     {app.resumeLink && (
                                                         <a
                                                             href={app.resumeLink}
@@ -514,53 +594,6 @@ const ClientDashboard = () => {
                     </div>
                 </div>
 
-                <div className="bg-inputBg dark:bg-darkCard rounded-2xl shadow-lg p-8 mt-8">
-                    <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-2xl font-bold text-textDark dark:text-darkText">Job history</h3>
-                        {history.length > 0 && (
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    await clearClientHistory();
-                                    setHistory([]);
-                                }}
-                                className="text-primary font-semibold text-sm"
-                            >
-                                Clear history
-                            </button>
-                        )}
-                    </div>
-                    {history.length === 0 && (
-                        <div className="text-textDark/60 dark:text-darkText/60">No past jobs yet.</div>
-                    )}
-                    <div className="space-y-4">
-                        {history.map((job) => (
-                            <div key={job._id} className="rounded-2xl border border-light/60 dark:border-darkBorder p-5 bg-white/70 dark:bg-darkCard/70">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <h4 className="font-semibold text-lg text-textDark dark:text-darkText">{job.title}</h4>
-                                        <p className="text-sm text-textDark/60 dark:text-darkText/60">{job.companyName || "Client"}</p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={async () => {
-                                            await archiveClientJob(job._id);
-                                            setHistory((prev) => prev.filter((item) => item._id !== job._id));
-                                        }}
-                                        className="text-primary font-semibold text-sm"
-                                    >
-                                        Remove
-                                    </button>
-                                </div>
-                                <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.location || "Remote"}</span>
-                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.employmentType || "Flexible"}</span>
-                                    <span className="px-2 py-1 rounded-full bg-light/80 dark:bg-darkBorder">{job.level || "Any level"}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
             </div>
         </div>
     );

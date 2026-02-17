@@ -42,6 +42,9 @@ const StudentJobs = () => {
     const [showSavedOnly, setShowSavedOnly] = useState(false);
     const [savedJobIds, setSavedJobIds] = useState(readSavedJobs());
     const [visibleJobsCount, setVisibleJobsCount] = useState(8);
+    const [visibleApplicationsCount, setVisibleApplicationsCount] = useState(4);
+    const [visibleHistoryCount, setVisibleHistoryCount] = useState(4);
+    const [historySearch, setHistorySearch] = useState("");
 
     const [applyJobId, setApplyJobId] = useState(null);
     const [applyForm, setApplyForm] = useState({
@@ -58,6 +61,8 @@ const StudentJobs = () => {
     const [applyLoading, setApplyLoading] = useState(false);
     const [applyMessages, setApplyMessages] = useState({});
     const [applySkillWarning, setApplySkillWarning] = useState("");
+    const [confirmCompleteApp, setConfirmCompleteApp] = useState(null);
+    const [completingId, setCompletingId] = useState(null);
     const [searchParams] = useSearchParams();
 
     const apiBase = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
@@ -108,6 +113,16 @@ const StudentJobs = () => {
             fetchHistory(),
         ]).finally(() => setLoading(false));
     }, [navigate]);
+
+    useEffect(() => {
+        if (!jobs.length || savedJobIds.length === 0) return;
+        const jobIds = new Set(jobs.map((job) => job._id));
+        const nextSaved = savedJobIds.filter((id) => jobIds.has(id));
+        if (nextSaved.length !== savedJobIds.length) {
+            writeSavedJobs(nextSaved);
+            setSavedJobIds(nextSaved);
+        }
+    }, [jobs, savedJobIds]);
 
     useEffect(() => {
         const applyId = searchParams.get("apply");
@@ -219,6 +234,14 @@ const StudentJobs = () => {
         setVisibleJobsCount(8);
     }, [searchTerm, cityFilter, employmentFilter, levelFilter, tagFilters, showSavedOnly]);
 
+    useEffect(() => {
+        setVisibleHistoryCount(4);
+    }, [history.length]);
+
+    useEffect(() => {
+        setVisibleApplicationsCount(4);
+    }, [applications.length]);
+
     const toggleSavedJob = (jobId) => {
         setSavedJobIds((prev) => {
             const next = prev.includes(jobId)
@@ -238,6 +261,7 @@ const StudentJobs = () => {
     }
 
     const profile = overview?.profile;
+    const appliedJobIds = new Set((applications || []).map((app) => app.jobId?._id || app.jobId));
 
     const setApplyMessage = (jobId, message) => {
         setApplyMessages((prev) => ({
@@ -389,6 +413,7 @@ const StudentJobs = () => {
                                 : "";
                             const clientInitial = (job.companyName || job.createdBy?.name || "Client").charAt(0);
                             const isSaved = savedJobIds.includes(job._id);
+                            const isApplied = appliedJobIds.has(job._id);
                             return (
                                 <div key={job._id || `${job.title}-${index}`} className="rounded-2xl border border-light/60 dark:border-darkBorder p-5 bg-white/70 dark:bg-darkCard/70 hover:shadow-md transition">
                                     <div className="flex items-start justify-between gap-3">
@@ -442,31 +467,45 @@ const StudentJobs = () => {
                                         ))}
                                     </div>
                                     <div className="mt-4 flex items-center justify-between">
-                                        <div className="text-primary font-semibold text-sm">{job.salary || "Budget discussed"}</div>
-                                        <button
-                                            className="text-primary font-semibold text-sm"
-                                            onClick={() => {
-                                                if (!overview?.hasSkills) {
-                                                    setApplySkillWarning("Add skills to apply for jobs.");
-                                                    return;
-                                                }
-                                                setApplySkillWarning("");
-                                                setApplyJobId(job._id);
-                                                setApplyForm({
-                                                    fullName: profile?.name || "",
-                                                    email: profile?.email || "",
-                                                    phone: "",
-                                                    coverMessage: "",
-                                                    experience: "",
-                                                    resumeLink: "",
-                                                });
-                                                setResumeFile(null);
-                                                setApplyMessage(job._id, { error: "", success: "" });
-                                            }}
-                                        >
-                                            Apply
-                                        </button>
+                                        <div className="text-primary font-semibold text-sm flex items-center">
+                                            <span className="mr-2 inline-flex items-center justify-center w-5 h-5 rounded-full border border-amber-400 text-[10px] font-bold text-amber-700 bg-amber-100">
+                                                ₹
+                                            </span>
+                                            {job.salary || "Budget discussed"}
+                                        </div>
+                                        {isApplied ? (
+                                            <span className="text-xs font-semibold text-primary">Applied</span>
+                                        ) : (
+                                            <button
+                                                className="text-primary font-semibold text-sm"
+                                                onClick={() => {
+                                                    if (!overview?.hasSkills) {
+                                                        setApplySkillWarning("Add skills to apply for jobs.");
+                                                        return;
+                                                    }
+                                                    setApplySkillWarning("");
+                                                    setApplyJobId(job._id);
+                                                    setApplyForm({
+                                                        fullName: profile?.name || "",
+                                                        email: profile?.email || "",
+                                                        phone: "",
+                                                        coverMessage: "",
+                                                        experience: "",
+                                                        resumeLink: "",
+                                                    });
+                                                    setResumeFile(null);
+                                                    setIncludeResume(false);
+                                                    setIncludePortfolio(false);
+                                                    setApplyMessage(job._id, { error: "", success: "" });
+                                                }}
+                                            >
+                                                Apply
+                                            </button>
+                                        )}
                                     </div>
+                                    {applyMessages[job._id]?.success && (
+                                        <div className="mt-3 text-xs text-primary">{applyMessages[job._id].success}</div>
+                                    )}
                                     {applySkillWarning && (
                                         <div className="mt-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-lg border border-accent/40 bg-accent/10 px-4 py-3">
                                             <span className="text-sm text-textDark/70 dark:text-darkText/70">
@@ -478,187 +517,6 @@ const StudentJobs = () => {
                                         </div>
                                     )}
 
-                                    {applyJobId === job._id && (
-                                        <div className="mt-5 border-t border-light/60 dark:border-darkBorder pt-4">
-                                            <div className="flex items-center justify-between">
-                                                <h5 className="font-semibold text-textDark dark:text-darkText">Application Form</h5>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setApplyJobId(null)}
-                                                    className="text-sm font-semibold text-primary hover:text-secondary"
-                                                >
-                                                    Close
-                                                </button>
-                                            </div>
-                                            {(applyMessages[job._id]?.error || applyMessages[job._id]?.success) && (
-                                                <div className="mt-3">
-                                                    {applyMessages[job._id]?.error && (
-                                                        <div className="p-3 bg-accent/20 border border-accent text-primary rounded-lg text-sm">
-                                                            {applyMessages[job._id].error}
-                                                        </div>
-                                                    )}
-                                                    {applyMessages[job._id]?.success && (
-                                                        <div className="p-3 bg-accent/30 border border-accent text-primary rounded-lg text-sm">
-                                                            {applyMessages[job._id].success}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                            <div className="mt-3 space-y-3">
-                                                <input
-                                                    type="text"
-                                                    value={applyForm.fullName}
-                                                    onChange={(e) => setApplyForm((prev) => ({ ...prev, fullName: e.target.value }))}
-                                                    placeholder="Full name"
-                                                    className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
-                                                />
-                                                <input
-                                                    type="email"
-                                                    value={applyForm.email}
-                                                    onChange={(e) => setApplyForm((prev) => ({ ...prev, email: e.target.value }))}
-                                                    placeholder="Email address"
-                                                    className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
-                                                />
-                                                <input
-                                                    type="text"
-                                                    value={applyForm.phone}
-                                                    onChange={(e) => setApplyForm((prev) => ({ ...prev, phone: e.target.value }))}
-                                                    placeholder="Contact number"
-                                                    className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
-                                                />
-                                                <textarea
-                                                    rows={3}
-                                                    value={applyForm.coverMessage}
-                                                    onChange={(e) => setApplyForm((prev) => ({ ...prev, coverMessage: e.target.value }))}
-                                                    placeholder="Cover message"
-                                                    className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
-                                                />
-                                                <textarea
-                                                    rows={3}
-                                                    value={applyForm.experience}
-                                                    onChange={(e) => setApplyForm((prev) => ({ ...prev, experience: e.target.value }))}
-                                                    placeholder="Past experience (optional)"
-                                                    className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
-                                                />
-                                                <div className="space-y-3">
-                                                    <div className="flex flex-wrap gap-4 text-sm text-textDark/70 dark:text-darkText/70">
-                                                        <label className="flex items-center gap-2">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={includeResume}
-                                                                onChange={(e) => {
-                                                                    const checked = e.target.checked;
-                                                                    setIncludeResume(checked);
-                                                                    if (!checked) {
-                                                                        setResumeFile(null);
-                                                                    }
-                                                                }}
-                                                                className="accent-primary"
-                                                            />
-                                                            Resume upload
-                                                        </label>
-                                                        <label className="flex items-center gap-2">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={includePortfolio}
-                                                                onChange={(e) => {
-                                                                    const checked = e.target.checked;
-                                                                    setIncludePortfolio(checked);
-                                                                    if (!checked) {
-                                                                        setApplyForm((prev) => ({ ...prev, resumeLink: "" }));
-                                                                    }
-                                                                }}
-                                                                className="accent-primary"
-                                                            />
-                                                            Portfolio link
-                                                        </label>
-                                                    </div>
-                                                    {includeResume && (
-                                                        <div className="space-y-2">
-                                                            <label className="text-sm text-textDark/70 dark:text-darkText/70">
-                                                                Upload resume (PDF/DOC, max 5MB)
-                                                            </label>
-                                                            <input
-                                                                type="file"
-                                                                accept=".pdf,.doc,.docx"
-                                                                onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
-                                                                className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
-                                                            />
-                                                            {resumeFile && (
-                                                                <p className="text-xs text-textDark/60 dark:text-darkText/60">
-                                                                    Selected: {resumeFile.name}
-                                                                </p>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                    {includePortfolio && (
-                                                        <input
-                                                            type="text"
-                                                            value={applyForm.resumeLink}
-                                                            onChange={(e) => setApplyForm((prev) => ({ ...prev, resumeLink: e.target.value }))}
-                                                            placeholder="Portfolio link"
-                                                            className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
-                                                        />
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className="mt-4 flex flex-col md:flex-row gap-3">
-                                                <button
-                                                    type="button"
-                                                    disabled={applyLoading}
-                                                    onClick={async () => {
-                                                        setApplyLoading(true);
-                                                        try {
-                                                            const validationMessage = validateApplication();
-                                                            if (validationMessage) {
-                                                                setApplyMessage(job._id, { error: validationMessage, success: "" });
-                                                                return;
-                                                            }
-                                                            const formData = new FormData();
-                                                            const payload = {
-                                                                ...applyForm,
-                                                                resumeLink: includePortfolio ? applyForm.resumeLink : "",
-                                                            };
-                                                            Object.entries(payload).forEach(([key, value]) => {
-                                                                formData.append(key, value || "");
-                                                            });
-                                                            if (includeResume && resumeFile) {
-                                                                formData.append("resume", resumeFile);
-                                                            }
-                                                            await applyToJob(job._id, formData);
-                                                            setApplyMessage(job._id, { error: "", success: "Application submitted successfully." });
-                                                            setApplyJobId(null);
-                                                            setResumeFile(null);
-                                                            setIncludeResume(false);
-                                                            setIncludePortfolio(false);
-                                                            const updatedApplications = await getStudentApplications();
-                                                            setApplications(updatedApplications.data || []);
-                                                        } catch (error) {
-                                                            setApplyMessage(job._id, { error: error.response?.data?.message || "Failed to apply", success: "" });
-                                                        } finally {
-                                                            setApplyLoading(false);
-                                                        }
-                                                    }}
-                                                    className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-secondary transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    {applyLoading ? "Submitting..." : "Submit Application"}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setApplyJobId(null);
-                                                        setResumeFile(null);
-                                                        setIncludeResume(false);
-                                                        setIncludePortfolio(false);
-                                                        setApplyMessage(job._id, { error: "", success: "" });
-                                                    }}
-                                                    className="bg-light dark:bg-darkBorder text-textDark dark:text-darkText px-6 py-2 rounded-lg hover:bg-accent/30 dark:hover:bg-accent/20 transition"
-                                                >
-                                                    Cancel
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             );
                         })}
@@ -676,6 +534,202 @@ const StudentJobs = () => {
                     </div>
                 )}
 
+                {applyJobId && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+                        <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-darkCard shadow-2xl border border-light/60 dark:border-darkBorder p-6">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <h4 className="text-xl font-bold text-textDark dark:text-darkText">Application Form</h4>
+                                    <p className="text-sm text-textDark/60 dark:text-darkText/60">
+                                        {(filteredJobs.find((item) => item._id === applyJobId)?.title || "Job")}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setApplyJobId(null);
+                                        setResumeFile(null);
+                                        setIncludeResume(false);
+                                        setIncludePortfolio(false);
+                                        setApplyMessage(applyJobId, { error: "", success: "" });
+                                    }}
+                                    className="text-sm font-semibold text-primary hover:text-secondary"
+                                >
+                                    Close
+                                </button>
+                            </div>
+                            {(applyMessages[applyJobId]?.error || applyMessages[applyJobId]?.success) && (
+                                <div className="mt-3">
+                                    {applyMessages[applyJobId]?.error && (
+                                        <div className="p-3 bg-accent/20 border border-accent text-primary rounded-lg text-sm">
+                                            {applyMessages[applyJobId].error}
+                                        </div>
+                                    )}
+                                    {applyMessages[applyJobId]?.success && (
+                                        <div className="p-3 bg-accent/30 border border-accent text-primary rounded-lg text-sm">
+                                            {applyMessages[applyJobId].success}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            <div className="mt-4 space-y-3">
+                                <input
+                                    type="text"
+                                    value={applyForm.fullName}
+                                    onChange={(e) => setApplyForm((prev) => ({ ...prev, fullName: e.target.value }))}
+                                    placeholder="Full name"
+                                    className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                />
+                                <input
+                                    type="email"
+                                    value={applyForm.email}
+                                    onChange={(e) => setApplyForm((prev) => ({ ...prev, email: e.target.value }))}
+                                    placeholder="Email address"
+                                    className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                />
+                                <input
+                                    type="text"
+                                    value={applyForm.phone}
+                                    onChange={(e) => setApplyForm((prev) => ({ ...prev, phone: e.target.value }))}
+                                    placeholder="Contact number"
+                                    className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                />
+                                <textarea
+                                    rows={3}
+                                    value={applyForm.coverMessage}
+                                    onChange={(e) => setApplyForm((prev) => ({ ...prev, coverMessage: e.target.value }))}
+                                    placeholder="Cover message"
+                                    className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                />
+                                <textarea
+                                    rows={3}
+                                    value={applyForm.experience}
+                                    onChange={(e) => setApplyForm((prev) => ({ ...prev, experience: e.target.value }))}
+                                    placeholder="Past experience (optional)"
+                                    className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                />
+                                <div className="space-y-3">
+                                    <div className="flex flex-wrap gap-4 text-sm text-textDark/70 dark:text-darkText/70">
+                                        <label className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                checked={includeResume}
+                                                onChange={(e) => {
+                                                    const checked = e.target.checked;
+                                                    setIncludeResume(checked);
+                                                    if (!checked) {
+                                                        setResumeFile(null);
+                                                    }
+                                                }}
+                                                className="accent-primary"
+                                            />
+                                            Resume upload
+                                        </label>
+                                        <label className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                checked={includePortfolio}
+                                                onChange={(e) => {
+                                                    const checked = e.target.checked;
+                                                    setIncludePortfolio(checked);
+                                                    if (!checked) {
+                                                        setApplyForm((prev) => ({ ...prev, resumeLink: "" }));
+                                                    }
+                                                }}
+                                                className="accent-primary"
+                                            />
+                                            Portfolio link
+                                        </label>
+                                    </div>
+                                    {includeResume && (
+                                        <div className="space-y-2">
+                                            <label className="text-sm text-textDark/70 dark:text-darkText/70">
+                                                Upload resume (PDF/DOC, max 5MB)
+                                            </label>
+                                            <input
+                                                type="file"
+                                                accept=".pdf,.doc,.docx"
+                                                onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+                                                className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                            />
+                                            {resumeFile && (
+                                                <p className="text-xs text-textDark/60 dark:text-darkText/60">
+                                                    Selected: {resumeFile.name}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                    {includePortfolio && (
+                                        <input
+                                            type="text"
+                                            value={applyForm.resumeLink}
+                                            onChange={(e) => setApplyForm((prev) => ({ ...prev, resumeLink: e.target.value }))}
+                                            placeholder="Portfolio link"
+                                            className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                            <div className="mt-5 flex flex-col md:flex-row gap-3">
+                                <button
+                                    type="button"
+                                    disabled={applyLoading}
+                                    onClick={async () => {
+                                        setApplyLoading(true);
+                                        setApplyMessage(applyJobId, { error: "", success: "" });
+                                        try {
+                                            const validationMessage = validateApplication();
+                                            if (validationMessage) {
+                                                setApplyMessage(applyJobId, { error: validationMessage, success: "" });
+                                                return;
+                                            }
+                                            const formData = new FormData();
+                                            const payload = {
+                                                ...applyForm,
+                                                resumeLink: includePortfolio ? applyForm.resumeLink : "",
+                                            };
+                                            Object.entries(payload).forEach(([key, value]) => {
+                                                formData.append(key, value || "");
+                                            });
+                                            if (includeResume && resumeFile) {
+                                                formData.append("resume", resumeFile);
+                                            }
+                                            await applyToJob(applyJobId, formData);
+                                            setApplyMessage(applyJobId, { error: "", success: "Application submitted successfully." });
+                                            setApplyJobId(null);
+                                            setResumeFile(null);
+                                            setIncludeResume(false);
+                                            setIncludePortfolio(false);
+                                            const updatedApplications = await getStudentApplications();
+                                            setApplications(updatedApplications.data || []);
+                                        } catch (error) {
+                                            setApplyMessage(applyJobId, { error: error.response?.data?.message || "Failed to apply", success: "" });
+                                        } finally {
+                                            setApplyLoading(false);
+                                        }
+                                    }}
+                                    className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-secondary transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {applyLoading ? "Submitting..." : "Submit Application"}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setApplyJobId(null);
+                                        setResumeFile(null);
+                                        setIncludeResume(false);
+                                        setIncludePortfolio(false);
+                                        setApplyMessage(applyJobId, { error: "", success: "" });
+                                    }}
+                                    className="bg-light dark:bg-darkBorder text-textDark dark:text-darkText px-6 py-2 rounded-lg hover:bg-accent/30 dark:hover:bg-accent/20 transition"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="bg-inputBg dark:bg-darkCard rounded-3xl shadow-lg p-8 border border-light/60 dark:border-darkBorder mb-8">
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-2xl font-bold text-textDark dark:text-darkText">Current applications</h3>
@@ -686,6 +740,7 @@ const StudentJobs = () => {
                         )}
                         {applications
                             .filter((app) => app.status === "pending" || app.status === "hired")
+                            .slice(0, visibleApplicationsCount)
                             .map((app) => (
                                 <div key={app._id} className="rounded-2xl border border-light/60 dark:border-darkBorder p-5 bg-white/70 dark:bg-darkCard/70">
                                     <div className="flex items-start justify-between">
@@ -715,11 +770,7 @@ const StudentJobs = () => {
                                             <button
                                                 type="button"
                                                 onClick={async () => {
-                                                    await completeApplication(app.jobId?._id, app._id);
-                                                    const updatedApplications = await getStudentApplications();
-                                                    const updatedHistory = await getStudentHistory();
-                                                    setApplications(updatedApplications.data || []);
-                                                    setHistory(updatedHistory.data || []);
+                                                    setConfirmCompleteApp(app);
                                                 }}
                                                 className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-secondary transition"
                                             >
@@ -730,7 +781,59 @@ const StudentJobs = () => {
                                 </div>
                             ))}
                     </div>
+                    {applications.filter((app) => app.status === "pending" || app.status === "hired").length > visibleApplicationsCount && (
+                        <div className="mt-6 flex justify-center">
+                            <button
+                                type="button"
+                                onClick={() => setVisibleApplicationsCount((prev) => prev + 4)}
+                                className="text-primary font-semibold text-sm"
+                            >
+                                View more
+                            </button>
+                        </div>
+                    )}
                 </div>
+
+                {confirmCompleteApp && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+                        <div className="w-full max-w-md rounded-2xl bg-white dark:bg-darkCard shadow-2xl border border-light/60 dark:border-darkBorder p-6">
+                            <h4 className="text-lg font-bold text-textDark dark:text-darkText">Confirm completion</h4>
+                            <p className="text-sm text-textDark/60 dark:text-darkText/60 mt-2">
+                                Are you sure you want to mark
+                                <span className="font-semibold"> {confirmCompleteApp.jobId?.title || "this job"}</span> as completed?
+                            </p>
+                            <div className="mt-5 flex flex-col md:flex-row gap-3">
+                                <button
+                                    type="button"
+                                    disabled={Boolean(completingId)}
+                                    onClick={async () => {
+                                        setCompletingId(confirmCompleteApp._id);
+                                        try {
+                                            await completeApplication(confirmCompleteApp.jobId?._id, confirmCompleteApp._id);
+                                            const updatedApplications = await getStudentApplications();
+                                            const updatedHistory = await getStudentHistory();
+                                            setApplications(updatedApplications.data || []);
+                                            setHistory(updatedHistory.data || []);
+                                            setConfirmCompleteApp(null);
+                                        } finally {
+                                            setCompletingId(null);
+                                        }
+                                    }}
+                                    className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-secondary transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {completingId ? "Marking..." : "Yes, mark completed"}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setConfirmCompleteApp(null)}
+                                    className="bg-light dark:bg-darkBorder text-textDark dark:text-darkText px-4 py-2 rounded-lg hover:bg-accent/30 dark:hover:bg-accent/20 transition"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div className="bg-inputBg dark:bg-darkCard rounded-3xl shadow-lg p-8 border border-light/60 dark:border-darkBorder mb-8">
                     <div className="flex items-center justify-between mb-6">
@@ -748,11 +851,28 @@ const StudentJobs = () => {
                             </button>
                         )}
                     </div>
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                        <input
+                            type="text"
+                            value={historySearch}
+                            onChange={(e) => setHistorySearch(e.target.value)}
+                            placeholder="Search history by title or company"
+                            className="w-full md:w-96 px-4 py-2 bg-white/70 dark:bg-darkCard/70 border border-light/60 dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
+                        />
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {history.length === 0 && (
                             <div className="text-textDark/60 dark:text-darkText/60">No completed jobs yet.</div>
                         )}
-                        {history.map((app) => (
+                        {history
+                            .filter((app) => {
+                                const term = historySearch.trim().toLowerCase();
+                                if (!term) return true;
+                                const text = `${app.jobId?.title || ""} ${app.jobId?.companyName || ""}`.toLowerCase();
+                                return text.includes(term);
+                            })
+                            .slice(0, visibleHistoryCount)
+                            .map((app) => (
                             <div key={app._id} className="rounded-2xl border border-light/60 dark:border-darkBorder p-5 bg-white/70 dark:bg-darkCard/70">
                                 <div className="flex items-start justify-between">
                                     <div>
@@ -785,6 +905,22 @@ const StudentJobs = () => {
                             </div>
                         ))}
                     </div>
+                    {history.filter((app) => {
+                        const term = historySearch.trim().toLowerCase();
+                        if (!term) return true;
+                        const text = `${app.jobId?.title || ""} ${app.jobId?.companyName || ""}`.toLowerCase();
+                        return text.includes(term);
+                    }).length > visibleHistoryCount && (
+                        <div className="mt-6 flex justify-center">
+                            <button
+                                type="button"
+                                onClick={() => setVisibleHistoryCount((prev) => prev + 4)}
+                                className="text-primary font-semibold text-sm"
+                            >
+                                View more
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

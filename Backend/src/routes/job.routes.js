@@ -25,6 +25,7 @@ const {
     getClientHistory,
     archiveClientJob,
     clearClientHistory,
+    submitClientReview,
 } = require("../controllers/job.controllers");
 
 const resumesDir = path.join(__dirname, "..", "..", "uploads", "resumes");
@@ -68,5 +69,6 @@ router.post(
 router.post("/:jobId/applications/:applicationId/hire", protect, allowRoles("client"), hireApplicant);
 router.post("/:jobId/applications/:applicationId/complete", protect, allowRoles("student"), completeApplication);
 router.post("/:jobId/applications/:applicationId/reject", protect, allowRoles("client"), rejectApplicant);
+router.post("/:jobId/applications/:applicationId/review", protect, allowRoles("client"), submitClientReview);
 
 module.exports = router;
