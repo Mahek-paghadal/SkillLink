@@ -1,3 +1,94 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@keyframes diamond-shimmer {
+	0% {
+		transform: translateX(-120%);
+	}
+	50% {
+		transform: translateX(120%);
+	}
+	100% {
+		transform: translateX(120%);
+	}
+}
+
+@keyframes diamond-sparkle {
+	0%,
+	100% {
+		opacity: 0.35;
+		transform: scale(0.8);
+	}
+	50% {
+		opacity: 0.9;
+		transform: scale(1);
+	}
+}
+
+@keyframes progress-diamond-shimmer {
+	0% {
+		background-position: -200% 0;
+	}
+	100% {
+		background-position: 200% 0;
+	}
+}
+
+.progress-diamond {
+	background: linear-gradient(90deg, rgba(56,189,248,0.75), rgba(255,255,255,0.85), rgba(56,189,248,0.75));
+	background-size: 200% 100%;
+	animation: progress-diamond-shimmer 3s linear infinite;
+}
+
+.progress-modal-scroll {
+	scrollbar-color: #d1d5db transparent;
+	scrollbar-width: thin;
+}
+
+.progress-modal-scroll::-webkit-scrollbar {
+	width: 10px;
+}
+
+.progress-modal-scroll::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.progress-modal-scroll::-webkit-scrollbar-thumb {
+	background: #d1d5db;
+	border-radius: 999px;
+}
+
+.dark .progress-modal-scroll::-webkit-scrollbar-thumb {
+	background: #111827;
+}
+
+.dark .progress-modal-scroll {
+	scrollbar-color: #111827 transparent;
+}
+
+.badges-modal-scroll {
+	scrollbar-color: #d1d5db transparent;
+	scrollbar-width: thin;
+}
+
+.badges-modal-scroll::-webkit-scrollbar {
+	width: 10px;
+}
+
+.badges-modal-scroll::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.badges-modal-scroll::-webkit-scrollbar-thumb {
+	background: #d1d5db;
+	border-radius: 999px;
+}
+
+.dark .badges-modal-scroll::-webkit-scrollbar-thumb {
+	background: #111827;
+}
+
+.dark .badges-modal-scroll {
+	scrollbar-color: #111827 transparent;
+}

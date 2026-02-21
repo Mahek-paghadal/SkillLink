@@ -496,27 +496,26 @@ exports.getStudentOverview = async (req, res) => {
             .filter((item) => item.tier)
             .sort((a, b) => b.count - a.count);
 
-                const badgeProgress = Array.from(skillCounts.entries())
-                    .map(([skill, count]) => {
-                        let nextTier = null;
-                        let remaining = 0;
-                        for (const threshold of BADGE_THRESHOLDS) {
-                            if (count < threshold.min) {
-                                nextTier = threshold.tier;
-                                remaining = threshold.min - count;
-                                break;
-                            }
-                        }
-                        return {
-                            skill: skillLabels.get(skill) || skill,
-                            count,
-                            nextTier,
-                            remaining,
-                        };
-                    })
-                    .filter((item) => item.nextTier)
-                    .sort((a, b) => a.remaining - b.remaining)
-                    .slice(0, 6);
+        const badgeProgress = Array.from(skillCounts.entries())
+            .map(([skill, count]) => {
+                let nextTier = null;
+                let remaining = 0;
+                for (const threshold of BADGE_THRESHOLDS) {
+                    if (count < threshold.min) {
+                        nextTier = threshold.tier;
+                        remaining = threshold.min - count;
+                        break;
+                    }
+                }
+                return {
+                    skill: skillLabels.get(skill) || skill,
+                    count,
+                    nextTier,
+                    remaining,
+                };
+            })
+            .filter((item) => item.nextTier)
+            .sort((a, b) => a.remaining - b.remaining);
 
         const reviews = completedApps
             .filter((app) => app.clientRating)

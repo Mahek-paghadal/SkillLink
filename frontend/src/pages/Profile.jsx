@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getProfile, logoutUser, uploadProfileImage, removeProfileImage } from "../api/authApi";
 import { updateStudentSkills, getStudentOverview } from "../api/studentApi";
@@ -9,9 +9,10 @@ const Profile = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [setSelectedImage] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [showImageMenu, setShowImageMenu] = useState(false);
   const [skills, setSkills] = useState([]);
   const [availableSkills, setAvailableSkills] = useState([]);
   const [selectedSkill, setSelectedSkill] = useState("");
@@ -21,9 +22,14 @@ const Profile = () => {
   const [rankStats, setRankStats] = useState(null);
   const [badges, setBadges] = useState([]);
   const [badgeProgress, setBadgeProgress] = useState([]);
+  const [showAllProgress, setShowAllProgress] = useState(false);
+  const [showAllBadges, setShowAllBadges] = useState(false);
   const [reviews, setReviews] = useState([]);
   const [reviewSummary, setReviewSummary] = useState({ average: 0, count: 0 });
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
+  const imageMenuRef = useRef(null);
+  const imageButtonRef = useRef(null);
 
   const apiBase = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
   const backendOrigin = apiBase.replace(/\/api\/?$/, "");
@@ -75,13 +81,24 @@ const Profile = () => {
     fetchProfile();
   }, [navigate]);
 
-  const handleUpload = async () => {
-    if (!selectedImage) return;
+  useEffect(() => {
+    if (!showImageMenu) return;
+    const handleOutsideClick = (event) => {
+      if (imageMenuRef.current?.contains(event.target)) return;
+      if (imageButtonRef.current?.contains(event.target)) return;
+      setShowImageMenu(false);
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [showImageMenu]);
+
+  const handleUpload = async (file) => {
+    if (!file) return;
     setUploading(true);
     setUploadError("");
     try {
       const formData = new FormData();
-      formData.append("image", selectedImage);
+      formData.append("image", file);
       const res = await uploadProfileImage(formData);
       setUser((prev) => ({
         ...(prev || {}),
@@ -94,6 +111,17 @@ const Profile = () => {
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleImageChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    if (!file) return;
+    setSelectedImage(file);
+    handleUpload(file);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    setShowImageMenu(false);
   };
 
   const handleRemoveImage = async () => {
@@ -188,39 +216,198 @@ const Profile = () => {
   };
   const getBadgeTone = (tier) => badgePalette[tier] || badgePalette.Bronze;
   const nextBadge = badgeProgress?.[0] || null;
+  const tierTargets = { Bronze: 4, Silver: 8, Gold: 20, Diamond: 40 };
+  const tierOrder = { Diamond: 4, Gold: 3, Silver: 2, Bronze: 1 };
+  const progressItems = (badgeProgress || [])
+    .map((item) => {
+    const target = tierTargets[item.nextTier] || 0;
+    const remaining = Number.isFinite(item.remaining) ? item.remaining : target;
+    const current = Math.max(0, target - remaining);
+    const percent = target > 0 ? Math.min(100, Math.max(0, Math.round((current / target) * 100))) : 0;
+    return { ...item, target, current, percent };
+    })
+    .sort((a, b) => {
+      const tierDiff = (tierOrder[b.nextTier] || 0) - (tierOrder[a.nextTier] || 0);
+      if (tierDiff !== 0) return tierDiff;
+      return a.remaining - b.remaining;
+    });
+  const visibleProgress = progressItems.slice(0, 8);
+  const getProgressBarClass = (tier) => {
+    switch (tier) {
+      case "Diamond":
+        return "progress-diamond";
+      case "Gold":
+        return "bg-gradient-to-r from-amber-400/70 to-yellow-500/70";
+      case "Silver":
+        return "bg-gradient-to-r from-slate-300/80 to-slate-500/70";
+      case "Bronze":
+      default:
+        return "bg-gradient-to-r from-primary/60 to-accent/70";
+    }
+  };
+  const displayBadges = [
+    ...(badges || []),
+    { skill: "Testing", tier: "Gold", count: 20 },
+    { skill: "Testing", tier: "Diamond", count: 40 },
+  ];
 
   const handleDownloadBadge = (badge) => {
     if (!badge) return;
     const title = `${badge.skill} ${badge.tier} Badge`;
-    const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <defs>
-    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#0ea5e9"/>
-      <stop offset="100%" stop-color="#f59e0b"/>
-    </linearGradient>
-    <linearGradient id="core" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#fef3c7"/>
-      <stop offset="100%" stop-color="#f59e0b"/>
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="96" fill="#f8fafc"/>
-  <rect x="64" y="64" width="384" height="384" rx="72" fill="url(#ring)"/>
-  <rect x="96" y="96" width="320" height="320" rx="60" fill="url(#core)"/>
-  <text x="256" y="240" font-family="Arial, sans-serif" font-size="32" text-anchor="middle" fill="#1f2937">${badge.tier.toUpperCase()}</text>
-  <text x="256" y="280" font-family="Arial, sans-serif" font-size="20" text-anchor="middle" fill="#1f2937">${badge.count} jobs</text>
-  <text x="256" y="332" font-family="Arial, sans-serif" font-size="22" text-anchor="middle" fill="#111827">${badge.skill}</text>
-  <text x="256" y="380" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#6b7280">SkillLink</text>
-</svg>`;
-    const blob = new Blob([svg], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${title.replace(/\s+/g, "-").toLowerCase()}.svg`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    const palette = {
+      Bronze: {
+        outer: ["#b8734f", "#7a3f2a"],
+        mid: ["#e0b59a", "#a46345"],
+        inner: ["#d4a27a", "#8a553b"],
+        text: "#5c3b2b",
+      },
+      Silver: {
+        outer: ["#c2c7d0", "#6f7b8a"],
+        mid: ["#e7ebf0", "#a7b1bf"],
+        inner: ["#cfd6df", "#7f8a9a"],
+        text: "#2b3745",
+      },
+      Gold: {
+        outer: ["#f0c55a", "#a87313"],
+        mid: ["#ffe2a6", "#d2a241"],
+        inner: ["#f2d07c", "#b1781c"],
+        text: "#5a4306",
+      },
+      Diamond: {
+        outer: ["#6fd0ff", "#1f66d1"],
+        mid: ["#bfeeff", "#5aa6ff"],
+        inner: ["#8de6ff", "#3d86e8"],
+        text: "#0f3a6b",
+      },
+    };
+
+    const tone = palette[badge.tier] || palette.Bronze;
+    const size = 512;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const drawRoundedRect = (x, y, w, h, r) => {
+      const radius = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.arcTo(x + w, y, x + w, y + h, radius);
+      ctx.arcTo(x + w, y + h, x, y + h, radius);
+      ctx.arcTo(x, y + h, x, y, radius);
+      ctx.arcTo(x, y, x + w, y, radius);
+      ctx.closePath();
+    };
+
+    const drawSparkle = (x, y, size, alpha) => {
+      const arm = size / 2;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.moveTo(x, y - arm);
+      ctx.lineTo(x + arm * 0.3, y - arm * 0.3);
+      ctx.lineTo(x + arm, y);
+      ctx.lineTo(x + arm * 0.3, y + arm * 0.3);
+      ctx.lineTo(x, y + arm);
+      ctx.lineTo(x - arm * 0.3, y + arm * 0.3);
+      ctx.lineTo(x - arm, y);
+      ctx.lineTo(x - arm * 0.3, y - arm * 0.3);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(224,242,254,0.95)";
+      ctx.shadowColor = "rgba(224,242,254,0.7)";
+      ctx.shadowBlur = 10;
+      ctx.fill();
+ 
+      ctx.restore();
+    };
+
+    const outerGradient = ctx.createLinearGradient(0, 0, size, size);
+    outerGradient.addColorStop(0, tone.outer[0]);
+    outerGradient.addColorStop(1, tone.outer[1]);
+    drawRoundedRect(0, 0, size, size, 140);
+    ctx.fillStyle = outerGradient;
+    ctx.fill();
+
+    const midInset = 38;
+    const midSize = size - midInset * 2;
+    const midGradient = ctx.createLinearGradient(midInset, midInset, size - midInset, size - midInset);
+    midGradient.addColorStop(0, tone.mid[0]);
+    midGradient.addColorStop(1, tone.mid[1]);
+    drawRoundedRect(midInset, midInset, midSize, midSize, 120);
+    ctx.fillStyle = midGradient;
+    ctx.fill();
+
+    const innerInset = 64;
+    const innerSize = size - innerInset * 2;
+    const innerGradient = ctx.createLinearGradient(innerInset, innerInset, size - innerInset, size - innerInset);
+    innerGradient.addColorStop(0, tone.inner[0]);
+    innerGradient.addColorStop(1, tone.inner[1]);
+    drawRoundedRect(innerInset, innerInset, innerSize, innerSize, 104);
+    ctx.fillStyle = innerGradient;
+    ctx.fill();
+
+    if (badge.tier === "Diamond") {
+      const highlight = ctx.createRadialGradient(150, 150, 10, 150, 150, 140);
+      highlight.addColorStop(0, "rgba(255,255,255,0.65)");
+      highlight.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = highlight;
+      drawRoundedRect(innerInset + 6, innerInset + 6, innerSize - 12, innerSize - 12, 96);
+      ctx.fill();
+
+      const shimmer = ctx.createLinearGradient(0, 0, size, size);
+      shimmer.addColorStop(0, "rgba(255,255,255,0)");
+      shimmer.addColorStop(0.5, "rgba(255,255,255,0.35)");
+      shimmer.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = shimmer;
+      drawRoundedRect(innerInset + 8, innerInset + 8, innerSize - 16, innerSize - 16, 92);
+      ctx.fill();
+      ctx.restore();
+
+      drawSparkle(350, 170, 20, 0.95);
+      drawSparkle(200, 330, 16, 0.9);
+      drawSparkle(300, 260, 14, 0.85);
+      drawSparkle(260, 200, 12, 0.8);
+    }
+
+    ctx.save();
+    drawRoundedRect(innerInset + 12, innerInset + 12, innerSize - 24, innerSize - 24, 96);
+    ctx.clip();
+    ctx.shadowColor = "rgba(0,0,0,0.2)";
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 3;
+    ctx.restore();
+
+    ctx.fillStyle = tone.text;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "600 52px Arial, sans-serif";
+    ctx.fillText(String(badge.tier).toUpperCase(), size / 2, size / 2 - 32);
+    ctx.font = "600 30px Arial, sans-serif";
+    ctx.fillText(`${badge.count} jobs`, size / 2, size / 2 + 8);
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        const fallbackUrl = canvas.toDataURL("image/png");
+        const fallbackLink = document.createElement("a");
+        fallbackLink.href = fallbackUrl;
+        fallbackLink.download = `${title.replace(/\s+/g, "-").toLowerCase()}.png`;
+        document.body.appendChild(fallbackLink);
+        fallbackLink.click();
+        fallbackLink.remove();
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${title.replace(/\s+/g, "-").toLowerCase()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }, "image/png");
   };
 
   if (loading) {
@@ -260,58 +447,81 @@ const Profile = () => {
         <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1.9fr] gap-6">
           <div className="space-y-6">
             <div className="bg-inputBg dark:bg-darkCard rounded-2xl shadow-lg p-6">
-              <div className="mb-6 flex items-center gap-6">
-                <div className="w-20 h-20 rounded-full bg-accent/30 dark:bg-darkBorder overflow-hidden flex items-center justify-center">
-                  {profileImageUrl ? (
-                    <img
-                      src={profileImageUrl}
-                      alt="Profile"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <svg className="w-10 h-10 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  )}
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-textDark/70 dark:text-darkText/70 mb-2">Profile Image</p>
-                  <div className="flex flex-col gap-3">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => setSelectedImage(e.target.files?.[0] || null)}
-                      className="block w-full text-sm text-textDark dark:text-darkText file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-primary file:text-white hover:file:bg-secondary"
-                    />
-                    <div className="flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        onClick={handleUpload}
-                        disabled={!selectedImage || uploading}
-                        className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-secondary transition disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {uploading ? "Uploading..." : "Upload"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleRemoveImage}
-                        disabled={!user?.profileImage || uploading}
-                        className="bg-light dark:bg-darkBorder text-textDark dark:text-darkText px-6 py-2 rounded-lg hover:bg-accent/30 dark:hover:bg-accent/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Remove
-                      </button>
-                    </div>
+              <div className="mb-6 flex flex-col items-center">
+                <div className="relative w-24 h-24">
+                  <div className="w-24 h-24 rounded-full bg-accent/30 dark:bg-darkBorder overflow-hidden flex items-center justify-center">
+                    {profileImageUrl ? (
+                      <img
+                        src={profileImageUrl}
+                        alt="Profile"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <svg className="w-10 h-10 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    )}
                   </div>
-                  {uploadError && (
-                    <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-lg text-sm">
-                      {uploadError}
-                    </div>
-                  )}
+                  <div className="absolute -bottom-2 right-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowImageMenu((prev) => !prev)}
+                      ref={imageButtonRef}
+                      className="w-9 h-9 rounded-full bg-light/80 dark:bg-darkBorder text-textDark dark:text-darkText flex items-center justify-center shadow hover:bg-accent/30 dark:hover:bg-accent/20 transition"
+                      aria-label="Edit profile image"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h3l2-2h8l2 2h3v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 17a4 4 0 100-8 4 4 0 000 8z" />
+                      </svg>
+                    </button>
+                    {showImageMenu && (
+                      <div
+                        ref={imageMenuRef}
+                        className="absolute left-0 mt-2 w-32 rounded-xl border border-light/60 dark:border-darkBorder bg-white dark:bg-darkCard shadow-lg overflow-hidden z-10"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full text-left px-3 py-2 text-sm text-textDark dark:text-darkText hover:bg-light/60 dark:hover:bg-darkBorder/60"
+                        >
+                          Change
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRemoveImage}
+                          disabled={!user?.profileImage || uploading}
+                          className="w-full text-left px-3 py-2 text-sm text-textDark dark:text-darkText hover:bg-light/60 dark:hover:bg-darkBorder/60 disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
+                />
+                {uploading && (
+                  <div className="mt-2 text-xs text-textDark/60 dark:text-darkText/60">Uploading...</div>
+                )}
+                {uploadError && (
+                  <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-lg text-sm">
+                    {uploadError}
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
+                <div className="rounded-xl border border-light/60 dark:border-darkBorder p-4 bg-white/70 dark:bg-darkCard/70">
+                  <p className="text-sm text-textDark/70 dark:text-darkText/70">Name</p>
+                  <p className="text-base font-semibold text-textDark dark:text-darkText">{user?.name || user?.fullName || "-"}</p>
+                </div>
                 <div className="rounded-xl border border-light/60 dark:border-darkBorder p-4 bg-white/70 dark:bg-darkCard/70">
                   <p className="text-sm text-textDark/70 dark:text-darkText/70">Email</p>
                   <p className="text-base font-semibold text-textDark dark:text-darkText break-all">{user?.email || "-"}</p>
@@ -319,10 +529,6 @@ const Profile = () => {
                 <div className="rounded-xl border border-light/60 dark:border-darkBorder p-4 bg-white/70 dark:bg-darkCard/70">
                   <p className="text-sm text-textDark/70 dark:text-darkText/70">Role</p>
                   <p className="text-base font-semibold text-textDark dark:text-darkText">{user?.role || "-"}</p>
-                </div>
-                <div className="rounded-xl border border-light/60 dark:border-darkBorder p-4 bg-white/70 dark:bg-darkCard/70">
-                  <p className="text-sm text-textDark/70 dark:text-darkText/70">Name</p>
-                  <p className="text-base font-semibold text-textDark dark:text-darkText">{user?.name || user?.fullName || "-"}</p>
                 </div>
                 <div className="rounded-xl border border-light/60 dark:border-darkBorder p-4 bg-white/70 dark:bg-darkCard/70">
                   <p className="text-sm text-textDark/70 dark:text-darkText/70">Joined</p>
@@ -350,11 +556,13 @@ const Profile = () => {
                       className="flex-1 px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
                     >
                       <option value="">Select a skill</option>
-                      {availableSkills.map((skill) => (
-                        <option key={skill} value={skill}>
-                          {skill}
-                        </option>
-                      ))}
+                      {availableSkills
+                        .filter((skill) => !skills.includes(skill))
+                        .map((skill) => (
+                          <option key={skill} value={skill}>
+                            {skill}
+                          </option>
+                        ))}
                     </select>
                     <button
                       type="button"
@@ -411,7 +619,7 @@ const Profile = () => {
                     </div>
                     <Link to="/student/jobs?saved=1" className="text-primary font-semibold text-sm">View more</Link>
                   </div>
-                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="mt-4 grid grid-cols-1 gap-4">
                     {savedJobs.length === 0 && (
                       <div className="text-textDark/60 dark:text-darkText/60">No saved jobs yet.</div>
                     )}
@@ -432,7 +640,7 @@ const Profile = () => {
           </div>
 
           {user?.role === "student" && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-2 gap-6">
               <div className="bg-white/70 dark:bg-darkCard/70 border border-light/60 dark:border-darkBorder rounded-2xl p-6 shadow-lg hover:shadow-xl transition">
                 <p className="text-xs tracking-widest text-textDark/60 dark:text-darkText/60">STUDENT RANK</p>
                 <div className="mt-6 text-center">
@@ -476,8 +684,10 @@ const Profile = () => {
                 <div className="mt-4 text-xs text-textDark/60 dark:text-darkText/60">Based on completed jobs</div>
               </div>
               <div className="bg-white/70 dark:bg-darkCard/70 border border-light/60 dark:border-darkBorder rounded-2xl p-6 lg:col-span-2">
-                <p className="text-xs tracking-widest text-textDark/60 dark:text-darkText/60">BADGES</p>
-                <div className="mt-3 flex items-start justify-between">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs tracking-widest text-textDark/60 dark:text-darkText/60">BADGES</p>
+                </div>
+                <div className="mt-2 flex items-start justify-between">
                   <div>
                     <div className="text-3xl font-bold text-primary">{badges.length}</div>
                     <div className="text-xs text-textDark/60 dark:text-darkText/60">Badges earned</div>
@@ -491,7 +701,7 @@ const Profile = () => {
                     </svg>
                   </div>
                 </div>
-                <div className="mt-6">
+                <div className="mt-1">
                   <p className="text-xs uppercase text-textDark/60 dark:text-darkText/60">Locked Badge</p>
                   <p className="text-base font-semibold text-textDark dark:text-darkText">
                     {badges.length > 0
@@ -500,25 +710,132 @@ const Profile = () => {
                   </p>
                 </div>
                 {nextBadge && (
-                  <div className="mt-3 text-xs text-textDark/60 dark:text-darkText/60">
+                  <div className="mt-2 text-xs text-textDark/60 dark:text-darkText/60">
                     Next badge: {nextBadge.skill} {nextBadge.nextTier} in {nextBadge.remaining} jobs
                   </div>
                 )}
                 <div className="mt-4 text-xs text-textDark/60 dark:text-darkText/60">Earn criteria: Bronze 4, Silver 8, Gold 20, Diamond 40 jobs per skill.</div>
-                {badges.length > 0 && (
-                  <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    {badges.slice(0, 4).map((badge) => {
+                {displayBadges.length > 0 && (
+                  <>
+                    <div className="mt-4 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setShowAllBadges(true)}
+                        className="text-xs font-semibold text-primary"
+                      >
+                        View more
+                      </button>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      {displayBadges.slice(0, 4).map((badge) => {
                       const tone = getBadgeTone(badge.tier);
+                      const isDiamond = badge.tier === "Diamond";
                       return (
-                        <div key={`${badge.skill}-${badge.tier}`} className="rounded-2xl bg-white/80 dark:bg-darkCard/80 border border-light/60 dark:border-darkBorder p-3">
+                        <div
+                          key={`${badge.skill}-${badge.tier}`}
+                          className={`relative rounded-2xl bg-white/80 dark:bg-darkCard/80 border border-light/60 dark:border-darkBorder p-3 ${
+                            isDiamond ? "shadow-sm dark:shadow-[0_12px_24px_rgba(15,23,42,0.35)]" : ""
+                          }`}
+                        >
+                          {isDiamond && (
+                            <div className="absolute -inset-2 rounded-3xl bg-cyan-400/10 blur-2xl pointer-events-none hidden dark:block" />
+                          )}
                           <div className="relative mx-auto w-20 h-20">
-                            <div className={`absolute inset-0 rounded-[26px] bg-gradient-to-br ${tone.frame}`} />
-                            <div className={`absolute inset-[6px] rounded-[20px] bg-gradient-to-br ${tone.frameEdge} shadow-inner`} />
-                            <div className={`absolute inset-[10px] rounded-[16px] bg-gradient-to-br ${tone.core}`} />
-                            <div className="absolute inset-[12px] rounded-[14px] shadow-[inset_0_2px_5px_rgba(255,255,255,0.35),inset_0_-4px_8px_rgba(0,0,0,0.18)]" />
+                            <div
+                              className={`absolute inset-0 rounded-[26px] bg-gradient-to-br ${tone.frame} ${
+                                isDiamond ? "border border-cyan-100/50" : ""
+                              }`}
+                            />
+                            <div
+                              className={`absolute inset-[6px] rounded-[20px] bg-gradient-to-br ${tone.frameEdge} ${
+                                isDiamond ? "shadow-[inset_0_2px_10px_rgba(255,255,255,0.45)]" : "shadow-inner"
+                              }`}
+                            />
+                            <div
+                              className={`absolute inset-[10px] rounded-[16px] ${
+                                isDiamond
+                                  ? "bg-gradient-to-br from-cyan-200/70 via-cyan-100/30 to-blue-500/40"
+                                  : `bg-gradient-to-br ${tone.core}`
+                              }`}
+                            />
+                            {isDiamond && (
+                              <div className="absolute inset-[10px] rounded-[16px] overflow-hidden">
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/45 to-transparent opacity-90 -translate-x-full animate-[diamond-shimmer_5s_ease-in-out_infinite]" />
+                                <svg
+                                  className="absolute top-2 right-2 w-4 h-4 text-cyan-50 drop-shadow-[0_0_8px_rgba(224,242,254,0.8)] animate-[diamond-sparkle_2.8s_ease-in-out_infinite]"
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M12 2l2.2 4.6L19 9l-4.8 2.4L12 16l-2.2-4.6L5 9l4.8-2.4L12 2z" />
+                                </svg>
+                                <svg
+                                  className="absolute top-3 left-3 w-3.5 h-3.5 text-cyan-50/95 drop-shadow-[0_0_7px_rgba(224,242,254,0.75)] animate-[diamond-sparkle_3.6s_ease-in-out_infinite]"
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M12 2l2.2 4.6L19 9l-4.8 2.4L12 16l-2.2-4.6L5 9l4.8-2.4L12 2z" />
+                                </svg>
+                                <svg
+                                  className="absolute bottom-3 left-3 w-3.5 h-3.5 text-cyan-50/95 drop-shadow-[0_0_7px_rgba(224,242,254,0.75)] animate-[diamond-sparkle_3.4s_ease-in-out_infinite]"
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M12 2l2.2 4.6L19 9l-4.8 2.4L12 16l-2.2-4.6L5 9l4.8-2.4L12 2z" />
+                                </svg>
+                                <svg
+                                  className="absolute top-6 left-8 w-3 h-3 text-cyan-50/95 drop-shadow-[0_0_6px_rgba(224,242,254,0.7)] animate-[diamond-sparkle_4.2s_ease-in-out_infinite]"
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M12 2l2.2 4.6L19 9l-4.8 2.4L12 16l-2.2-4.6L5 9l4.8-2.4L12 2z" />
+                                </svg>
+                                <svg
+                                  className="absolute top-9 left-5 w-2.5 h-2.5 text-white/90 drop-shadow-[0_0_6px_rgba(224,242,254,0.8)] animate-[diamond-sparkle_3.2s_ease-in-out_infinite]"
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M12 2l2.2 4.6L19 9l-4.8 2.4L12 16l-2.2-4.6L5 9l4.8-2.4L12 2z" />
+                                </svg>
+                                <svg
+                                  className="absolute bottom-6 right-6 w-2.5 h-2.5 text-cyan-50/95 drop-shadow-[0_0_6px_rgba(224,242,254,0.75)] animate-[diamond-sparkle_3.8s_ease-in-out_infinite]"
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M12 2l2.2 4.6L19 9l-4.8 2.4L12 16l-2.2-4.6L5 9l4.8-2.4L12 2z" />
+                                </svg>
+                                <svg
+                                  className="absolute top-9 right-5 w-2 h-2 text-white/90 drop-shadow-[0_0_5px_rgba(224,242,254,0.8)] animate-[diamond-sparkle_3.1s_ease-in-out_infinite]"
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M12 2l2.2 4.6L19 9l-4.8 2.4L12 16l-2.2-4.6L5 9l4.8-2.4L12 2z" />
+                                </svg>
+                              </div>
+                            )}
+                            <div
+                              className={`absolute inset-[12px] rounded-[14px] ${
+                                isDiamond
+                                  ? "bg-gradient-to-br from-white/60 via-white/15 to-transparent"
+                                  : ""
+                              } shadow-[inset_0_2px_5px_rgba(255,255,255,0.35),inset_0_-4px_8px_rgba(0,0,0,0.18)]`}
+                            />
+                            {isDiamond && null}
                             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                              <div className={`text-[11px] font-semibold tracking-widest uppercase ${tone.text}`}>{badge.tier}</div>
-                              <div className={`text-[10px] font-bold ${tone.text}`}>{badge.count} jobs</div>
+                              <div
+                                className={`text-[11px] ${isDiamond ? "font-extrabold" : "font-semibold"} tracking-widest uppercase ${tone.text}`}
+                              >
+                                {badge.tier}
+                              </div>
+                              <div className={`text-[10px] ${isDiamond ? "font-semibold" : "font-bold"} ${tone.text}`}>
+                                {badge.count} jobs
+                              </div>
                             </div>
                           </div>
                           <div className="mt-2 text-center text-xs font-semibold text-textDark dark:text-darkText">
@@ -534,24 +851,49 @@ const Profile = () => {
                         </div>
                       );
                     })}
-                  </div>
+                    </div>
+                  </>
                 )}
-                {badgeProgress.length > 0 && (
+                {progressItems.length > 0 && (
                   <div className="mt-5">
-                    <p className="text-xs uppercase text-textDark/60 dark:text-darkText/60">Next badge progress</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs uppercase text-textDark/60 dark:text-darkText/60">Next badge progress</p>
+                    </div>
                     <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {badgeProgress.map((item) => (
+                      {visibleProgress.map((item) => (
                         <div
                           key={`${item.skill}-${item.nextTier}`}
                           className="rounded-xl border border-light/60 dark:border-darkBorder bg-white/70 dark:bg-darkCard/70 p-3"
                         >
-                          <div className="text-sm font-semibold text-textDark dark:text-darkText">{item.skill}</div>
-                          <div className="text-xs text-textDark/60 dark:text-darkText/60">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-semibold text-textDark dark:text-darkText">{item.skill}</div>
+                            <div className="text-xs font-semibold text-textDark/60 dark:text-darkText/60">
+                              {item.current}/{item.target}
+                            </div>
+                          </div>
+                          <div className="mt-2 h-2 rounded-full bg-light/80 dark:bg-darkBorder overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${getProgressBarClass(item.nextTier)}`}
+                              style={{ width: `${item.percent}%` }}
+                            />
+                          </div>
+                          <div className="mt-2 text-xs text-textDark/60 dark:text-darkText/60">
                             {item.remaining} jobs left to reach {item.nextTier}
                           </div>
                         </div>
                       ))}
                     </div>
+                    {progressItems.length > 0 && (
+                      <div className="mt-4 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => setShowAllProgress(true)}
+                          className="text-xs font-semibold text-primary"
+                        >
+                          View more
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -584,6 +926,186 @@ const Profile = () => {
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+        {showAllProgress && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div
+              className="absolute inset-0 bg-black/40"
+              onClick={() => setShowAllProgress(false)}
+            />
+            <div className="relative w-full max-w-2xl mx-4 rounded-2xl bg-white dark:bg-darkCard border border-light/60 dark:border-darkBorder p-6 shadow-xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-textDark dark:text-darkText">Next badge progress</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowAllProgress(false)}
+                  className="text-textDark/60 dark:text-darkText/60 hover:text-primary"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="progress-modal-scroll mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] overflow-auto pr-1">
+                {progressItems.map((item) => (
+                  <div
+                    key={`${item.skill}-${item.nextTier}-modal`}
+                    className="rounded-xl border border-light/60 dark:border-darkBorder bg-white/70 dark:bg-darkCard/70 p-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-semibold text-textDark dark:text-darkText">{item.skill}</div>
+                      <div className="text-xs font-semibold text-textDark/60 dark:text-darkText/60">
+                        {item.current}/{item.target}
+                      </div>
+                    </div>
+                    <div className="mt-2 h-2 rounded-full bg-light/80 dark:bg-darkBorder overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${getProgressBarClass(item.nextTier)}`}
+                        style={{ width: `${item.percent}%` }}
+                      />
+                    </div>
+                    <div className="mt-2 text-xs text-textDark/60 dark:text-darkText/60">
+                      {item.remaining} jobs left to reach {item.nextTier}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        {showAllBadges && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div
+              className="absolute inset-0 bg-black/40"
+              onClick={() => setShowAllBadges(false)}
+            />
+            <div className="relative w-full max-w-3xl mx-4 rounded-2xl bg-white dark:bg-darkCard border border-light/60 dark:border-darkBorder p-6 shadow-xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-textDark dark:text-darkText">All badges</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowAllBadges(false)}
+                  className="text-textDark/60 dark:text-darkText/60 hover:text-primary"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="badges-modal-scroll mt-4 grid grid-cols-2 sm:grid-cols-3 gap-4 max-h-[60vh] overflow-auto pr-1">
+                {displayBadges.map((badge) => {
+                  const tone = getBadgeTone(badge.tier);
+                  const isDiamond = badge.tier === "Diamond";
+                  return (
+                    <div
+                      key={`${badge.skill}-${badge.tier}-modal`}
+                      className={`relative rounded-2xl bg-white/80 dark:bg-darkCard/80 border border-light/60 dark:border-darkBorder p-4 ${
+                        isDiamond ? "shadow-sm dark:shadow-[0_12px_24px_rgba(15,23,42,0.35)]" : ""
+                      }`}
+                    >
+                      {isDiamond && (
+                        <div className="absolute -inset-2 rounded-3xl bg-cyan-400/10 blur-2xl pointer-events-none hidden dark:block" />
+                      )}
+                      <div className="relative mx-auto w-24 h-24">
+                        <div
+                          className={`absolute inset-0 rounded-[26px] bg-gradient-to-br ${tone.frame} ${
+                            isDiamond ? "border border-cyan-100/50" : ""
+                          }`}
+                        />
+                        <div
+                          className={`absolute inset-[6px] rounded-[20px] bg-gradient-to-br ${tone.frameEdge} ${
+                            isDiamond ? "shadow-[inset_0_2px_10px_rgba(255,255,255,0.45)]" : "shadow-inner"
+                          }`}
+                        />
+                        <div
+                          className={`absolute inset-[10px] rounded-[16px] ${
+                            isDiamond
+                              ? "bg-gradient-to-br from-cyan-200/70 via-cyan-100/30 to-blue-500/40"
+                              : `bg-gradient-to-br ${tone.core}`
+                          }`}
+                        />
+                        {isDiamond && (
+                          <div className="absolute inset-[10px] rounded-[16px] overflow-hidden">
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/45 to-transparent opacity-90 -translate-x-full animate-[diamond-shimmer_5s_ease-in-out_infinite]" />
+                            <svg
+                              className="absolute top-2 right-2 w-4 h-4 text-cyan-50 drop-shadow-[0_0_8px_rgba(224,242,254,0.8)] animate-[diamond-sparkle_2.8s_ease-in-out_infinite]"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 2l2.2 4.6L19 9l-4.8 2.4L12 16l-2.2-4.6L5 9l4.8-2.4L12 2z" />
+                            </svg>
+                            <svg
+                              className="absolute top-3 left-3 w-3.5 h-3.5 text-cyan-50/95 drop-shadow-[0_0_7px_rgba(224,242,254,0.75)] animate-[diamond-sparkle_3.6s_ease-in-out_infinite]"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 2l2.2 4.6L19 9l-4.8 2.4L12 16l-2.2-4.6L5 9l4.8-2.4L12 2z" />
+                            </svg>
+                            <svg
+                              className="absolute bottom-3 left-3 w-3.5 h-3.5 text-cyan-50/95 drop-shadow-[0_0_7px_rgba(224,242,254,0.75)] animate-[diamond-sparkle_3.4s_ease-in-out_infinite]"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 2l2.2 4.6L19 9l-4.8 2.4L12 16l-2.2-4.6L5 9l4.8-2.4L12 2z" />
+                            </svg>
+                            <svg
+                              className="absolute top-6 left-8 w-3 h-3 text-cyan-50/95 drop-shadow-[0_0_6px_rgba(224,242,254,0.7)] animate-[diamond-sparkle_4.2s_ease-in-out_infinite]"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 2l2.2 4.6L19 9l-4.8 2.4L12 16l-2.2-4.6L5 9l4.8-2.4L12 2z" />
+                            </svg>
+                            <svg
+                              className="absolute top-9 left-5 w-2.5 h-2.5 text-white/90 drop-shadow-[0_0_6px_rgba(224,242,254,0.8)] animate-[diamond-sparkle_3.2s_ease-in-out_infinite]"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 2l2.2 4.6L19 9l-4.8 2.4L12 16l-2.2-4.6L5 9l4.8-2.4L12 2z" />
+                            </svg>
+                            <svg
+                              className="absolute bottom-6 right-6 w-2.5 h-2.5 text-cyan-50/95 drop-shadow-[0_0_6px_rgba(224,242,254,0.75)] animate-[diamond-sparkle_3.8s_ease-in-out_infinite]"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 2l2.2 4.6L19 9l-4.8 2.4L12 16l-2.2-4.6L5 9l4.8-2.4L12 2z" />
+                            </svg>
+                            <svg
+                              className="absolute top-9 right-5 w-2 h-2 text-white/90 drop-shadow-[0_0_5px_rgba(224,242,254,0.8)] animate-[diamond-sparkle_3.1s_ease-in-out_infinite]"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 2l2.2 4.6L19 9l-4.8 2.4L12 16l-2.2-4.6L5 9l4.8-2.4L12 2z" />
+                            </svg>
+                          </div>
+                        )}
+                        <div
+                          className={`absolute inset-[12px] rounded-[14px] ${
+                            isDiamond
+                              ? "bg-gradient-to-br from-white/60 via-white/15 to-transparent"
+                              : ""
+                          } shadow-[inset_0_2px_5px_rgba(255,255,255,0.35),inset_0_-4px_8px_rgba(0,0,0,0.18)]`}
+                        />
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                          <div className={`text-[12px] ${isDiamond ? "font-extrabold" : "font-semibold"} tracking-widest uppercase ${tone.text}`}>
+                            {badge.tier}
+                          </div>
+                          <div className={`text-[11px] ${isDiamond ? "font-semibold" : "font-bold"} ${tone.text}`}>
+                            {badge.count} jobs
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-2 text-center text-xs font-semibold text-textDark dark:text-darkText">
+                        {badge.skill}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
