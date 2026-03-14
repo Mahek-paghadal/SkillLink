@@ -2,6 +2,8 @@ const Job = require("../models/Job");
 const Application = require("../models/Application");
 const User = require("../models/User");
 const Student = require("../models/Student");
+const JobOpportunity = require("../models/JobOpportunity");
+const JobPick = require("../models/JobPick");
 const Notification = require("../models/Notification");
 const sendEmail = require("../utils/sendEmail");
 const path = require("path");
@@ -181,6 +183,24 @@ const buildClientStudentSummary = async (clientId) => {
     });
 
     return enrichedStudents;
+};
+
+exports.getJobRoles = async (req, res) => {
+    try {
+        const [opportunityRoles, pickTitles] = await Promise.all([
+            JobOpportunity.distinct("role"),
+            JobPick.distinct("title"),
+        ]);
+
+        const merged = [...(opportunityRoles || []), ...(pickTitles || [])]
+            .map((role) => String(role || "").trim())
+            .filter(Boolean);
+        const roles = Array.from(new Set(merged)).sort((a, b) => a.localeCompare(b));
+
+        res.json({ roles });
+    } catch (error) {
+        res.status(500).json({ message: "Failed to load job roles" });
+    }
 };
 
 exports.listJobs = async (req, res) => {

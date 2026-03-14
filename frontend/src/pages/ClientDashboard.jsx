@@ -6,6 +6,7 @@ import {
     deleteJob,
     getApplicants,
     getClientJobs,
+    getJobRoles,
     getShareableStudents,
     hireApplicant,
     rejectApplicant,
@@ -15,6 +16,13 @@ import {
 } from "../api/jobApi";
 
 const ClientDashboard = () => {
+    const EMPLOYMENT_OPTIONS = [
+        "Part Time Onsite",
+        "Part Time Remote",
+        "Full Time Onsite",
+        "Full Time Remote",
+    ];
+    const LEVEL_OPTIONS = ["Easy", "Medium", "Hard"];
     const [user, setUser] = useState(null);
     const [jobs, setJobs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -25,7 +33,7 @@ const ClientDashboard = () => {
         employmentType: "",
         level: "",
         salary: "",
-        tags: "",
+        jobRole: "",
         companyName: "",
     });
     const [editingJobId, setEditingJobId] = useState(null);
@@ -41,6 +49,10 @@ const ClientDashboard = () => {
     const [shareLoading, setShareLoading] = useState(false);
     const [shareError, setShareError] = useState("");
     const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+    const [jobRoleOptions, setJobRoleOptions] = useState([]);
+    const [jobRoleLoading, setJobRoleLoading] = useState(false);
+    const [jobRoleError, setJobRoleError] = useState("");
+    const [openDropdown, setOpenDropdown] = useState(null);
     const navigate = useNavigate();
     const apiBase = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
     const backendOrigin = apiBase.replace(/\/api\/?$/, "");
@@ -71,6 +83,23 @@ const ClientDashboard = () => {
         fetchJobs();
     }, [navigate]);
 
+    useEffect(() => {
+        const fetchRoles = async () => {
+            setJobRoleLoading(true);
+            setJobRoleError("");
+            try {
+                const res = await getJobRoles();
+                setJobRoleOptions(res.data?.roles || []);
+            } catch (e) {
+                setJobRoleOptions([]);
+                setJobRoleError("Failed to load job roles");
+            } finally {
+                setJobRoleLoading(false);
+            }
+        };
+        fetchRoles();
+    }, []);
+
     const notifyJobsUpdated = () => {
         window.dispatchEvent(new Event("jobs-updated"));
     };
@@ -93,6 +122,16 @@ const ClientDashboard = () => {
         fetchShareStudents();
     }, [showShareModal, shareMode]);
 
+    useEffect(() => {
+        if (!openDropdown) return;
+        const handleOutsideClick = (event) => {
+            if (event.target.closest("[data-dropdown-root]")) return;
+            setOpenDropdown(null);
+        };
+        document.addEventListener("mousedown", handleOutsideClick);
+        return () => document.removeEventListener("mousedown", handleOutsideClick);
+    }, [openDropdown]);
+
     const toggleStudentSelection = (studentId) => {
         setSelectedStudentIds((prev) =>
             prev.includes(studentId)
@@ -109,7 +148,7 @@ const ClientDashboard = () => {
             employmentType: "",
             level: "",
             salary: "",
-            tags: "",
+            jobRole: "",
             companyName: user?.name || "",
         });
         setEditingJobId(null);
@@ -125,9 +164,7 @@ const ClientDashboard = () => {
         try {
             const payload = {
                 ...form,
-                tags: form.tags
-                    ? form.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
-                    : [],
+                tags: form.jobRole ? [form.jobRole] : [],
             };
             if (visibility === "targeted") {
                 payload.visibility = "targeted";
@@ -217,20 +254,76 @@ const ClientDashboard = () => {
                             placeholder="Location"
                             className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
                         />
-                        <input
-                            type="text"
-                            value={form.employmentType}
-                            onChange={(e) => setForm((prev) => ({ ...prev, employmentType: e.target.value }))}
-                            placeholder="Employment type"
-                            className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
-                        />
-                        <input
-                            type="text"
-                            value={form.level}
-                            onChange={(e) => setForm((prev) => ({ ...prev, level: e.target.value }))}
-                            placeholder="Level"
-                            className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
-                        />
+                        <div className="relative" data-dropdown-root>
+                            <button
+                                type="button"
+                                onClick={() => setOpenDropdown((prev) => (prev === "employmentType" ? null : "employmentType"))}
+                                className="w-full flex items-center justify-between px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg text-left transition text-textDark dark:text-darkText hover:border-primary"
+                            >
+                                <span className={form.employmentType ? "text-textDark dark:text-darkText" : "text-textDark/50 dark:text-darkText/50"}>
+                                    {form.employmentType || "Employment time/type"}
+                                </span>
+                                <svg className={`h-4 w-4 text-textDark/60 dark:text-darkText/60 transition ${openDropdown === "employmentType" ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+                            {openDropdown === "employmentType" && (
+                                <div className="absolute z-20 mt-2 w-full rounded-xl border border-light/60 dark:border-darkBorder bg-white dark:bg-darkCard shadow-lg overflow-hidden">
+                                    {EMPLOYMENT_OPTIONS.map((option) => (
+                                        <button
+                                            type="button"
+                                            key={option}
+                                            onClick={() => {
+                                                setForm((prev) => ({ ...prev, employmentType: option }));
+                                                setOpenDropdown(null);
+                                            }}
+                                            className={`w-full text-left px-4 py-2 text-sm transition ${
+                                                form.employmentType === option
+                                                    ? "bg-primary/10 text-primary"
+                                                    : "text-textDark dark:text-darkText hover:bg-light/60 dark:hover:bg-darkBorder/60"
+                                            }`}
+                                        >
+                                            {option}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div className="relative" data-dropdown-root>
+                            <button
+                                type="button"
+                                onClick={() => setOpenDropdown((prev) => (prev === "level" ? null : "level"))}
+                                className="w-full flex items-center justify-between px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg text-left transition text-textDark dark:text-darkText hover:border-primary"
+                            >
+                                <span className={form.level ? "text-textDark dark:text-darkText" : "text-textDark/50 dark:text-darkText/50"}>
+                                    {form.level || "Level"}
+                                </span>
+                                <svg className={`h-4 w-4 text-textDark/60 dark:text-darkText/60 transition ${openDropdown === "level" ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+                            {openDropdown === "level" && (
+                                <div className="absolute z-20 mt-2 w-full rounded-xl border border-light/60 dark:border-darkBorder bg-white dark:bg-darkCard shadow-lg overflow-hidden">
+                                    {LEVEL_OPTIONS.map((option) => (
+                                        <button
+                                            type="button"
+                                            key={option}
+                                            onClick={() => {
+                                                setForm((prev) => ({ ...prev, level: option }));
+                                                setOpenDropdown(null);
+                                            }}
+                                            className={`w-full text-left px-4 py-2 text-sm transition ${
+                                                form.level === option
+                                                    ? "bg-primary/10 text-primary"
+                                                    : "text-textDark dark:text-darkText hover:bg-light/60 dark:hover:bg-darkBorder/60"
+                                            }`}
+                                        >
+                                            {option}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                         <input
                             type="text"
                             value={form.salary}
@@ -238,13 +331,49 @@ const ClientDashboard = () => {
                             placeholder="Salary / Budget"
                             className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
                         />
-                        <input
-                            type="text"
-                            value={form.tags}
-                            onChange={(e) => setForm((prev) => ({ ...prev, tags: e.target.value }))}
-                            placeholder="Tags (comma separated)"
-                            className="w-full px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition text-textDark dark:text-darkText"
-                        />
+                        <div className="relative" data-dropdown-root>
+                            <button
+                                type="button"
+                                onClick={() => setOpenDropdown((prev) => (prev === "jobRole" ? null : "jobRole"))}
+                                className="w-full flex items-center justify-between px-4 py-3 bg-inputBg dark:bg-darkBorder border border-light dark:border-darkBorder rounded-lg text-left transition text-textDark dark:text-darkText hover:border-primary"
+                            >
+                                <span className={form.jobRole ? "text-textDark dark:text-darkText" : "text-textDark/50 dark:text-darkText/50"}>
+                                    {form.jobRole || "Job role"}
+                                </span>
+                                <svg className={`h-4 w-4 text-textDark/60 dark:text-darkText/60 transition ${openDropdown === "jobRole" ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+                            {openDropdown === "jobRole" && (
+                                <div className="absolute z-20 mt-2 w-full rounded-xl border border-light/60 dark:border-darkBorder bg-white dark:bg-darkCard shadow-lg overflow-hidden">
+                                    {jobRoleLoading && (
+                                        <div className="px-4 py-2 text-sm text-textDark/60 dark:text-darkText/60">Loading...</div>
+                                    )}
+                                    {!jobRoleLoading && jobRoleOptions.length === 0 && (
+                                        <div className="px-4 py-2 text-sm text-textDark/60 dark:text-darkText/60">
+                                            {jobRoleError || "No job roles available"}
+                                        </div>
+                                    )}
+                                    {jobRoleOptions.map((option) => (
+                                        <button
+                                            type="button"
+                                            key={option}
+                                            onClick={() => {
+                                                setForm((prev) => ({ ...prev, jobRole: option }));
+                                                setOpenDropdown(null);
+                                            }}
+                                            className={`w-full text-left px-4 py-2 text-sm transition ${
+                                                form.jobRole === option
+                                                    ? "bg-primary/10 text-primary"
+                                                    : "text-textDark dark:text-darkText hover:bg-light/60 dark:hover:bg-darkBorder/60"
+                                            }`}
+                                        >
+                                            {option}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                     <textarea
                         rows={4}
@@ -268,9 +397,7 @@ const ClientDashboard = () => {
                                     try {
                                         const payload = {
                                             ...form,
-                                            tags: form.tags
-                                                ? form.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
-                                                : [],
+                                            tags: form.jobRole ? [form.jobRole] : [],
                                         };
                                         await updateJob(editingJobId, payload);
                                         await fetchJobs();
@@ -334,7 +461,7 @@ const ClientDashboard = () => {
                                                     employmentType: job.employmentType || "",
                                                     level: job.level || "",
                                                     salary: job.salary || "",
-                                                    tags: (job.tags || []).join(", "),
+                                                    jobRole: (job.tags || [])[0] || "",
                                                     companyName: job.companyName || user?.name || "",
                                                 });
                                                 setError("");

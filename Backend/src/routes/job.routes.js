@@ -28,6 +28,7 @@ const {
     getClientStats,
     getClientStatsDetails,
     getShareableStudents,
+    getJobRoles,
     submitClientReview,
 } = require("../controllers/job.controllers");
 
@@ -60,6 +61,7 @@ router.post("/history/clear", protect, allowRoles("client"), clearClientHistory)
 router.get("/stats", protect, allowRoles("client"), getClientStats);
 router.get("/stats/details", protect, allowRoles("client"), getClientStatsDetails);
 router.get("/share-students", protect, allowRoles("client"), getShareableStudents);
+router.get("/roles", protect, allowRoles("client"), getJobRoles);
 router.put("/:jobId", protect, allowRoles("client"), updateJob);
 router.post("/:jobId/close", protect, allowRoles("client"), closeJob);
 router.post("/:jobId/archive", protect, allowRoles("client"), archiveClientJob);
