@@ -12,20 +12,29 @@ const PAGE_SIZE = 6;
 
 const ClientJobs = () => {
     const [tab, setTab] = useState("current");
-    const [jobs, setJobs] = useState([]);
+    const [currentJobs, setCurrentJobs] = useState([]);
+    const [pendingJobs, setPendingJobs] = useState([]);
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
+    const [confirmOpen, setConfirmOpen] = useState(false);
+    const [confirmContext, setConfirmContext] = useState({
+        action: "",
+        jobId: null,
+        message: "",
+    });
     const navigate = useNavigate();
 
     const loadData = async () => {
         setLoading(true);
         try {
-            const [jobsRes, historyRes] = await Promise.all([
-                getClientJobs({ status: "open" }),
+            const [currentRes, pendingRes, historyRes] = await Promise.all([
+                getClientJobs({ status: "current" }),
+                getClientJobs({ status: "pending" }),
                 getClientHistory(),
             ]);
-            setJobs(jobsRes.data || []);
+            setCurrentJobs(currentRes.data || []);
+            setPendingJobs(pendingRes.data || []);
             setHistory(historyRes.data || []);
         } catch (error) {
             navigate("/client/dashboard");
@@ -42,7 +51,40 @@ const ClientJobs = () => {
         setPage(1);
     }, [tab]);
 
-    const items = tab === "current" ? jobs : history;
+    const openConfirm = ({ action, jobId, message }) => {
+        setConfirmContext({ action, jobId: jobId || null, message });
+        setConfirmOpen(true);
+    };
+
+    const closeConfirm = () => {
+        setConfirmOpen(false);
+        setConfirmContext({ action: "", jobId: null, message: "" });
+    };
+
+    const handleConfirm = async () => {
+        const { action, jobId } = confirmContext;
+        if (!action) return;
+        if (action === "close" && jobId) {
+            await closeJob(jobId);
+            await loadData();
+        }
+        if (action === "remove" && jobId) {
+            await archiveClientJob(jobId);
+            setHistory((prev) => prev.filter((item) => item._id !== jobId));
+        }
+        if (action === "clear-history") {
+            await clearClientHistory();
+            setHistory([]);
+        }
+        closeConfirm();
+    };
+
+    const items =
+        tab === "current"
+            ? currentJobs
+            : tab === "pending"
+                ? pendingJobs
+                : history;
     const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
     const pagedItems = useMemo(() => {
         const start = (page - 1) * PAGE_SIZE;
@@ -66,7 +108,7 @@ const ClientJobs = () => {
                             <p className="text-primary text-xs font-semibold tracking-widest">CLIENT JOBS</p>
                             <h2 className="text-3xl font-bold text-textDark dark:text-darkText mt-2">Manage jobs</h2>
                             <p className="text-textDark/60 dark:text-darkText/60 mt-2">
-                                Review current postings and job history.
+                                Review current, pending, and historical jobs.
                             </p>
                         </div>
                         <button
@@ -89,7 +131,18 @@ const ClientJobs = () => {
                                 : "bg-light/80 dark:bg-darkBorder text-textDark dark:text-darkText"
                         }`}
                     >
-                        Current jobs ({jobs.length})
+                        Current jobs ({currentJobs.length})
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setTab("pending")}
+                        className={`px-4 py-2 rounded-full text-sm font-semibold ${
+                            tab === "pending"
+                                ? "bg-primary text-white"
+                                : "bg-light/80 dark:bg-darkBorder text-textDark dark:text-darkText"
+                        }`}
+                    >
+                        Pending jobs ({pendingJobs.length})
                     </button>
                     <button
                         type="button"
@@ -106,8 +159,10 @@ const ClientJobs = () => {
                         <button
                             type="button"
                             onClick={async () => {
-                                await clearClientHistory();
-                                setHistory([]);
+                                openConfirm({
+                                    action: "clear-history",
+                                    message: "This will permanently remove all jobs from history.",
+                                });
                             }}
                             className="ml-auto text-primary font-semibold text-sm"
                         >
@@ -119,7 +174,11 @@ const ClientJobs = () => {
                 <div className="bg-inputBg dark:bg-darkCard rounded-2xl shadow-lg p-6">
                     {pagedItems.length === 0 && (
                         <div className="text-textDark/60 dark:text-darkText/60">
-                            {tab === "current" ? "No active jobs yet." : "No past jobs yet."}
+                            {tab === "current"
+                                ? "No active jobs yet."
+                                : tab === "pending"
+                                    ? "No pending jobs yet."
+                                    : "No past jobs yet."}
                         </div>
                     )}
                     <div className="space-y-4">
@@ -137,27 +196,33 @@ const ClientJobs = () => {
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
-                                        {tab === "current" ? (
+                                        {tab === "history" ? (
                                             <button
                                                 type="button"
                                                 onClick={async () => {
-                                                    await closeJob(job._id);
-                                                    await loadData();
+                                                    openConfirm({
+                                                        action: "remove",
+                                                        jobId: job._id,
+                                                        message: "This will remove the job from your history.",
+                                                    });
                                                 }}
                                                 className="text-primary font-semibold text-sm"
                                             >
-                                                Close job
+                                                Remove
                                             </button>
                                         ) : (
                                             <button
                                                 type="button"
                                                 onClick={async () => {
-                                                    await archiveClientJob(job._id);
-                                                    setHistory((prev) => prev.filter((item) => item._id !== job._id));
+                                                    openConfirm({
+                                                        action: "close",
+                                                        jobId: job._id,
+                                                        message: "Closing a job stops new applications and cannot be undone.",
+                                                    });
                                                 }}
                                                 className="text-primary font-semibold text-sm"
                                             >
-                                                Remove
+                                                Close job
                                             </button>
                                         )}
                                     </div>
@@ -191,6 +256,38 @@ const ClientJobs = () => {
                     </div>
                 )}
             </div>
+            {confirmOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center">
+                    <div
+                        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                        onClick={closeConfirm}
+                    />
+                    <div className="relative w-full max-w-md mx-4 rounded-2xl bg-white dark:bg-darkCard border border-light/60 dark:border-darkBorder p-6 shadow-xl">
+                        <div className="text-lg font-semibold text-textDark dark:text-darkText">
+                            Are you sure you want to proceed?
+                        </div>
+                        <p className="mt-2 text-sm text-textDark/60 dark:text-darkText/60">
+                            {confirmContext.message || "This action is sensitive and cannot be undone."}
+                        </p>
+                        <div className="mt-6 flex items-center justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={closeConfirm}
+                                className="px-4 py-2 rounded-lg border border-light/60 dark:border-darkBorder text-textDark dark:text-darkText hover:bg-light/60 dark:hover:bg-darkBorder/60 transition"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirm}
+                                className="px-5 py-2 rounded-lg bg-primary text-white font-semibold hover:bg-secondary transition"
+                            >
+                                Confirm
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

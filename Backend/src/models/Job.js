@@ -12,6 +12,8 @@ const jobSchema = new mongoose.Schema(
         companyName: { type: String, default: "", trim: true },
         createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
         status: { type: String, enum: ["open", "closed", "completed"], default: "open" },
+        visibility: { type: String, enum: ["global", "targeted"], default: "global" },
+        allowedStudents: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
         archivedByClient: { type: Boolean, default: false },
     },
     { timestamps: true }

@@ -29,3 +29,4 @@ export const archiveClientJob = (jobId) => API.post(`/jobs/${jobId}/archive`);
 export const clearClientHistory = () => API.post("/jobs/history/clear");
 export const getClientStats = () => API.get("/jobs/stats");
 export const getClientStatsDetails = () => API.get("/jobs/stats/details");
+export const getShareableStudents = () => API.get("/jobs/share-students");

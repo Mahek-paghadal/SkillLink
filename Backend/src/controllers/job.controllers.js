@@ -130,9 +130,71 @@ const buildRankings = async () => {
     return ranked;
 };
 
+const buildClientStudentSummary = async (clientId) => {
+    const completedWithClient = await Application.find({
+        clientId,
+        status: "completed",
+    })
+        .select("studentId")
+        .lean();
+
+    const completedByStudent = new Map();
+    completedWithClient.forEach((app) => {
+        const key = String(app.studentId);
+        completedByStudent.set(key, (completedByStudent.get(key) || 0) + 1);
+    });
+
+    const uniqueStudentIds = Array.from(completedByStudent.keys());
+    if (uniqueStudentIds.length === 0) return [];
+
+    const rankings = await buildRankings();
+    const rankIndexByStudent = new Map(
+        rankings.map((entry, index) => [String(entry.studentId), { entry, index }])
+    );
+
+    const students = await User.find({ _id: { $in: uniqueStudentIds } })
+        .select("name email profileImage")
+        .lean();
+
+    const enrichedStudents = students.map((student) => {
+        const rankData = rankIndexByStudent.get(String(student._id));
+        const rankScore = rankData?.entry?.score ?? 0;
+        const rankTier = getRankTier(rankScore);
+        const rankPosition = rankData ? rankData.index + 1 : null;
+        const completedJobsWithClient = completedByStudent.get(String(student._id)) || 0;
+
+        return {
+            ...student,
+            rankTier,
+            rankPosition,
+            completedJobsWithClient,
+        };
+    });
+
+    enrichedStudents.sort((a, b) => {
+        if (b.completedJobsWithClient !== a.completedJobsWithClient) {
+            return b.completedJobsWithClient - a.completedJobsWithClient;
+        }
+        const rankA = Number.isFinite(a.rankPosition) ? a.rankPosition : Number.MAX_SAFE_INTEGER;
+        const rankB = Number.isFinite(b.rankPosition) ? b.rankPosition : Number.MAX_SAFE_INTEGER;
+        return rankA - rankB;
+    });
+
+    return enrichedStudents;
+};
+
 exports.listJobs = async (req, res) => {
     try {
-        const jobs = await Job.find({ status: "open" })
+        const query = { status: "open" };
+        if (req.user.role === "student") {
+            query.$or = [
+                { visibility: { $exists: false } },
+                { visibility: "global" },
+                { visibility: "targeted", allowedStudents: req.user.userId },
+            ];
+        }
+
+        const jobs = await Job.find(query)
             .sort({ createdAt: -1 })
             .populate("createdBy", "name profileImage");
         res.json(jobs);
@@ -143,7 +205,18 @@ exports.listJobs = async (req, res) => {
 
 exports.createJob = async (req, res) => {
     try {
-        const { title, description, location, employmentType, level, salary, tags, companyName } = req.body;
+        const {
+            title,
+            description,
+            location,
+            employmentType,
+            level,
+            salary,
+            tags,
+            companyName,
+            visibility,
+            allowedStudents,
+        } = req.body;
 
         if (!title || !description) {
             return res.status(400).json({ message: "Title and description are required" });
@@ -152,6 +225,28 @@ exports.createJob = async (req, res) => {
         const user = await User.findById(req.user.userId);
         if (!user) {
             return res.status(404).json({ message: "User not found" });
+        }
+
+        const targetVisibility = visibility === "targeted" ? "targeted" : "global";
+        let allowedStudentIds = [];
+
+        if (targetVisibility === "targeted") {
+            if (!Array.isArray(allowedStudents) || allowedStudents.length === 0) {
+                return res.status(400).json({ message: "Select at least one student" });
+            }
+
+            const eligibleStudents = await Application.distinct("studentId", {
+                clientId: req.user.userId,
+                status: "completed",
+            });
+            const eligibleSet = new Set(eligibleStudents.map((id) => String(id)));
+            allowedStudentIds = allowedStudents
+                .map((id) => String(id))
+                .filter((id) => eligibleSet.has(id));
+
+            if (allowedStudentIds.length !== allowedStudents.length) {
+                return res.status(400).json({ message: "Selected students are not eligible" });
+            }
         }
 
         const job = await Job.create({
@@ -165,7 +260,38 @@ exports.createJob = async (req, res) => {
             companyName: companyName || user.name || "Client",
             createdBy: req.user.userId,
             status: "open",
+            visibility: targetVisibility,
+            allowedStudents: allowedStudentIds,
         });
+
+        if (targetVisibility === "targeted" && allowedStudentIds.length > 0) {
+            const selectedStudents = await User.find({ _id: { $in: allowedStudentIds } })
+                .select("name email")
+                .lean();
+
+            await Promise.all(selectedStudents.map(async (student) => {
+                await createNotification({
+                    userId: student._id,
+                    title: "New job shared with you",
+                    message: `${user.name || "Client"} shared a job: ${job.title}.`,
+                    type: "job",
+                    link: "/student/jobs",
+                });
+
+                if (student.email) {
+                    await sendEmail({
+                        to: student.email,
+                        subject: `New job from ${user.name || "Client"}`,
+                        html: `
+                            <h2>New job shared with you</h2>
+                            <p><strong>Job:</strong> ${job.title}</p>
+                            <p><strong>Client:</strong> ${user.name || "Client"}</p>
+                            <p>Log in to SkillLink to view the details.</p>
+                        `,
+                    });
+                }
+            }));
+        }
 
         res.status(201).json(job);
     } catch (error) {
@@ -226,6 +352,25 @@ exports.getClientJobs = async (req, res) => {
 
         if (statusFilter === "open") {
             query.status = "open";
+        } else if (statusFilter === "current") {
+            const hiredJobIds = await Application.distinct("jobId", {
+                clientId: req.user.userId,
+                status: "hired",
+            });
+            if (hiredJobIds.length === 0) {
+                return res.json([]);
+            }
+            const jobs = await Job.find({ _id: { $in: hiredJobIds } }).sort({ createdAt: -1 });
+            return res.json(jobs);
+        } else if (statusFilter === "pending") {
+            const hiredJobIds = await Application.distinct("jobId", {
+                clientId: req.user.userId,
+                status: "hired",
+            });
+            query.status = "open";
+            if (hiredJobIds.length > 0) {
+                query._id = { $nin: hiredJobIds };
+            }
         } else if (statusFilter === "closed") {
             query.status = { $in: ["closed", "completed"] };
         }
@@ -328,6 +473,13 @@ exports.applyForJob = async (req, res) => {
         const job = await Job.findById(jobId);
         if (!job || job.status !== "open") {
             return res.status(404).json({ message: "Job not found" });
+        }
+
+        if (job.visibility === "targeted") {
+            const allowed = (job.allowedStudents || []).map((id) => String(id));
+            if (!allowed.includes(String(req.user.userId))) {
+                return res.status(403).json({ message: "You are not allowed to apply for this job" });
+            }
         }
 
         const fullName = (req.body?.fullName || "").trim();
@@ -641,11 +793,21 @@ exports.closeJob = async (req, res) => {
 
 exports.getClientHistory = async (req, res) => {
     try {
-        const jobs = await Job.find({
+        const hiredJobIds = await Application.distinct("jobId", {
+            clientId: req.user.userId,
+            status: "hired",
+        });
+
+        const query = {
             createdBy: req.user.userId,
             status: { $in: ["closed", "completed"] },
             archivedByClient: false,
-        }).sort({ updatedAt: -1 });
+        };
+        if (hiredJobIds.length > 0) {
+            query._id = { $nin: hiredJobIds };
+        }
+
+        const jobs = await Job.find(query).sort({ updatedAt: -1 });
 
         res.json(jobs);
     } catch (error) {
@@ -660,11 +822,9 @@ exports.archiveClientJob = async (req, res) => {
         if (!job) {
             return res.status(404).json({ message: "Job not found" });
         }
+        await job.deleteOne();
 
-        job.archivedByClient = true;
-        await job.save();
-
-        res.json({ message: "History item removed" });
+        res.json({ message: "Job removed" });
     } catch (error) {
         res.status(500).json({ message: "Failed to clear history" });
     }
@@ -672,11 +832,24 @@ exports.archiveClientJob = async (req, res) => {
 
 exports.clearClientHistory = async (req, res) => {
     try {
-        await Job.updateMany(
-            { createdBy: req.user.userId, status: { $in: ["closed", "completed"] }, archivedByClient: false },
-            { $set: { archivedByClient: true } }
-        );
-        res.json({ message: "History cleared" });
+        const hiredJobIds = await Application.distinct("jobId", {
+            clientId: req.user.userId,
+            status: "hired",
+        });
+
+        const query = {
+            createdBy: req.user.userId,
+            status: { $in: ["closed", "completed"] },
+        };
+        if (hiredJobIds.length > 0) {
+            query._id = { $nin: hiredJobIds };
+        }
+
+        const result = await Job.deleteMany(query);
+        res.json({
+            message: "History cleared",
+            deletedCount: result?.deletedCount || 0,
+        });
     } catch (error) {
         res.status(500).json({ message: "Failed to clear history" });
     }
@@ -757,59 +930,7 @@ exports.getClientStatsDetails = async (req, res) => {
             .sort({ createdAt: -1 })
             .lean();
 
-        const uniqueStudentIds = await Application.distinct("studentId", {
-            clientId,
-            status: { $in: ["hired", "completed"] },
-        });
-
-        const completedWithClient = await Application.find({
-            clientId,
-            status: "completed",
-        })
-            .select("studentId")
-            .lean();
-
-        const completedByStudent = new Map();
-        completedWithClient.forEach((app) => {
-            const key = String(app.studentId);
-            completedByStudent.set(key, (completedByStudent.get(key) || 0) + 1);
-        });
-
-        const rankings = await buildRankings();
-        const rankIndexByStudent = new Map(
-            rankings.map((entry, index) => [String(entry.studentId), { entry, index }])
-        );
-
-        const uniqueStudents = uniqueStudentIds.length
-            ? await User.find({ _id: { $in: uniqueStudentIds } })
-                .select("name email profileImage")
-                .sort({ createdAt: -1 })
-                .lean()
-            : [];
-
-        const enrichedStudents = uniqueStudents.map((student) => {
-            const rankData = rankIndexByStudent.get(String(student._id));
-            const rankScore = rankData?.entry?.score ?? 0;
-            const rankTier = getRankTier(rankScore);
-            const rankPosition = rankData ? rankData.index + 1 : null;
-            const completedJobsWithClient = completedByStudent.get(String(student._id)) || 0;
-
-            return {
-                ...student,
-                rankTier,
-                rankPosition,
-                completedJobsWithClient,
-            };
-        });
-
-        enrichedStudents.sort((a, b) => {
-            if (b.completedJobsWithClient !== a.completedJobsWithClient) {
-                return b.completedJobsWithClient - a.completedJobsWithClient;
-            }
-            const rankA = Number.isFinite(a.rankPosition) ? a.rankPosition : Number.MAX_SAFE_INTEGER;
-            const rankB = Number.isFinite(b.rankPosition) ? b.rankPosition : Number.MAX_SAFE_INTEGER;
-            return rankA - rankB;
-        });
+        const enrichedStudents = await buildClientStudentSummary(clientId);
 
         res.json({
             postedJobs,
@@ -819,5 +940,15 @@ exports.getClientStatsDetails = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ message: "Failed to load client stats details" });
+    }
+};
+
+exports.getShareableStudents = async (req, res) => {
+    try {
+        const clientId = req.user.userId;
+        const students = await buildClientStudentSummary(clientId);
+        res.json({ students });
+    } catch (error) {
+        res.status(500).json({ message: "Failed to load students" });
     }
 };
