@@ -108,6 +108,14 @@ const Navbar = () => {
     return "/";
   };
 
+  const getProfilePath = () => {
+    if (!authed) return "/";
+    if (role === "student") return "/student/profile";
+    if (role === "client") return "/client/profile";
+    if (role === "admin") return "/admin/dashboard";
+    return "/";
+  };
+
   const isAuthPage = ["/auth", "/forgot-password", "/reset-password"].includes(
     location.pathname
   );
@@ -234,7 +242,7 @@ const Navbar = () => {
           )}
           {authed && !isAuthPage && (
             <Link
-              to="/profile"
+              to={getProfilePath()}
               className="w-9 h-9 rounded-full bg-accent/30 dark:bg-darkBorder flex items-center justify-center hover:ring-2 ring-primary transition"
               title="Profile"
             >

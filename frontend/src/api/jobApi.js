@@ -27,3 +27,5 @@ export const closeJob = (jobId) => API.post(`/jobs/${jobId}/close`);
 export const getClientHistory = () => API.get("/jobs/history");
 export const archiveClientJob = (jobId) => API.post(`/jobs/${jobId}/archive`);
 export const clearClientHistory = () => API.post("/jobs/history/clear");
+export const getClientStats = () => API.get("/jobs/stats");
+export const getClientStatsDetails = () => API.get("/jobs/stats/details");

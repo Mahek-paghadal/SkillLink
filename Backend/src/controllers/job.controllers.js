@@ -28,6 +28,108 @@ const createNotification = async ({ userId, title, message, type = "info", link 
     }
 };
 
+const computeRankScore = (completedCount, avgRating, reliabilityScore, responseHours, rehireRate) => {
+    const completedScore = Math.min(completedCount / 20, 1) * 45;
+    const ratingScore = Math.min(avgRating / 5, 1) * 35;
+    const reliability = Math.min(reliabilityScore / 5, 1) * 10;
+    const responseBase = Number.isFinite(responseHours) ? responseHours : 72;
+    const responseScore = (1 - Math.min(responseBase / 72, 1)) * 5;
+    const rehireScore = Math.min(rehireRate, 1) * 5;
+    return Math.round(completedScore + ratingScore + reliability + responseScore + rehireScore);
+};
+
+const getRankTier = (score) => {
+    if (score >= 90) return "Diamond";
+    if (score >= 75) return "Gold";
+    if (score >= 55) return "Silver";
+    return "Bronze";
+};
+
+const buildStudentFeatures = async () => {
+    const students = await User.find({ role: "student" }).select("_id").lean();
+    const completedApps = await Application.find({ status: "completed" }).lean();
+    const hiredApps = await Application.find({ status: "hired" }).lean();
+
+    const completedByStudent = new Map();
+    const ratingsByStudent = new Map();
+    const responseByStudent = new Map();
+    const clientCountsByStudent = new Map();
+
+    completedApps.forEach((app) => {
+        const key = String(app.studentId);
+        completedByStudent.set(key, (completedByStudent.get(key) || 0) + 1);
+        if (Number.isFinite(app.clientRating)) {
+            const ratings = ratingsByStudent.get(key) || [];
+            ratings.push(app.clientRating);
+            ratingsByStudent.set(key, ratings);
+        }
+        const clientMap = clientCountsByStudent.get(key) || new Map();
+        const clientKey = String(app.clientId);
+        clientMap.set(clientKey, (clientMap.get(clientKey) || 0) + 1);
+        clientCountsByStudent.set(key, clientMap);
+    });
+
+    hiredApps.forEach((app) => {
+        const key = String(app.studentId);
+        if (app.hiredAt && app.createdAt) {
+            const hours = (new Date(app.hiredAt) - new Date(app.createdAt)) / (1000 * 60 * 60);
+            if (Number.isFinite(hours)) {
+                const list = responseByStudent.get(key) || [];
+                list.push(hours);
+                responseByStudent.set(key, list);
+            }
+        }
+    });
+
+    return students.map((student) => {
+        const studentId = String(student._id);
+        const completedCount = completedByStudent.get(studentId) || 0;
+        const ratings = ratingsByStudent.get(studentId) || [];
+        const avgRating = ratings.length
+            ? ratings.reduce((sum, value) => sum + value, 0) / ratings.length
+            : 0;
+        const responseHoursList = responseByStudent.get(studentId) || [];
+        const responseHours = responseHoursList.length
+            ? responseHoursList.reduce((sum, value) => sum + value, 0) / responseHoursList.length
+            : 72;
+        const clientMap = clientCountsByStudent.get(studentId) || new Map();
+        const uniqueClients = clientMap.size;
+        const repeatClients = Array.from(clientMap.values()).filter((count) => count >= 2).length;
+        const rehireRate = uniqueClients ? repeatClients / uniqueClients : 0;
+
+        return {
+            studentId,
+            completedCount,
+            avgRating,
+            responseHours,
+            rehireRate,
+        };
+    });
+};
+
+const buildRankings = async () => {
+    const features = await buildStudentFeatures();
+    const reliabilityScore = 4.8;
+
+    const ranked = features.map((entry) => ({
+        studentId: entry.studentId,
+        score: computeRankScore(
+            entry.completedCount,
+            entry.avgRating,
+            reliabilityScore,
+            entry.responseHours,
+            entry.rehireRate
+        ),
+        completedCount: entry.completedCount,
+        avgRating: entry.avgRating,
+        responseHours: entry.responseHours,
+        rehireRate: entry.rehireRate,
+    }));
+
+    ranked.sort((a, b) => b.score - a.score);
+    return ranked;
+};
+
 exports.listJobs = async (req, res) => {
     try {
         const jobs = await Job.find({ status: "open" })
@@ -577,5 +679,145 @@ exports.clearClientHistory = async (req, res) => {
         res.json({ message: "History cleared" });
     } catch (error) {
         res.status(500).json({ message: "Failed to clear history" });
+    }
+};
+
+exports.getClientStats = async (req, res) => {
+    try {
+        const clientId = req.user.userId;
+
+        const totalJobsPosted = await Job.countDocuments({ createdBy: clientId });
+
+        const activeHiredJobIds = await Application.distinct("jobId", {
+            clientId,
+            status: "hired",
+        });
+
+        const hiredOrCompletedJobIds = await Application.distinct("jobId", {
+            clientId,
+            status: { $in: ["hired", "completed"] },
+        });
+
+        const pendingQuery = { createdBy: clientId, status: "open" };
+        if (hiredOrCompletedJobIds.length) {
+            pendingQuery._id = { $nin: hiredOrCompletedJobIds };
+        }
+
+        const pendingJobs = await Job.countDocuments(pendingQuery);
+
+        const uniqueStudentsWorkedWith = await Application.distinct("studentId", {
+            clientId,
+            status: { $in: ["hired", "completed"] },
+        });
+
+        res.json({
+            totalJobsPosted,
+            activeHiredJobs: activeHiredJobIds.length,
+            pendingJobs,
+            uniqueStudentsWorkedWith: uniqueStudentsWorkedWith.length,
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Failed to load client stats" });
+    }
+};
+
+exports.getClientStatsDetails = async (req, res) => {
+    try {
+        const clientId = req.user.userId;
+
+        const postedJobs = await Job.find({ createdBy: clientId })
+            .select("title companyName status createdAt")
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const activeHiredJobIds = await Application.distinct("jobId", {
+            clientId,
+            status: "hired",
+        });
+
+        const hiredOrCompletedJobIds = await Application.distinct("jobId", {
+            clientId,
+            status: { $in: ["hired", "completed"] },
+        });
+
+        const activeHiredJobs = activeHiredJobIds.length
+            ? await Job.find({ _id: { $in: activeHiredJobIds } })
+                .select("title companyName status createdAt")
+                .sort({ createdAt: -1 })
+                .lean()
+            : [];
+
+        const pendingQuery = { createdBy: clientId, status: "open" };
+        if (hiredOrCompletedJobIds.length) {
+            pendingQuery._id = { $nin: hiredOrCompletedJobIds };
+        }
+
+        const pendingJobs = await Job.find(pendingQuery)
+            .select("title companyName status createdAt")
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const uniqueStudentIds = await Application.distinct("studentId", {
+            clientId,
+            status: { $in: ["hired", "completed"] },
+        });
+
+        const completedWithClient = await Application.find({
+            clientId,
+            status: "completed",
+        })
+            .select("studentId")
+            .lean();
+
+        const completedByStudent = new Map();
+        completedWithClient.forEach((app) => {
+            const key = String(app.studentId);
+            completedByStudent.set(key, (completedByStudent.get(key) || 0) + 1);
+        });
+
+        const rankings = await buildRankings();
+        const rankIndexByStudent = new Map(
+            rankings.map((entry, index) => [String(entry.studentId), { entry, index }])
+        );
+
+        const uniqueStudents = uniqueStudentIds.length
+            ? await User.find({ _id: { $in: uniqueStudentIds } })
+                .select("name email profileImage")
+                .sort({ createdAt: -1 })
+                .lean()
+            : [];
+
+        const enrichedStudents = uniqueStudents.map((student) => {
+            const rankData = rankIndexByStudent.get(String(student._id));
+            const rankScore = rankData?.entry?.score ?? 0;
+            const rankTier = getRankTier(rankScore);
+            const rankPosition = rankData ? rankData.index + 1 : null;
+            const completedJobsWithClient = completedByStudent.get(String(student._id)) || 0;
+
+            return {
+                ...student,
+                rankTier,
+                rankPosition,
+                completedJobsWithClient,
+            };
+        });
+
+        enrichedStudents.sort((a, b) => {
+            if (b.completedJobsWithClient !== a.completedJobsWithClient) {
+                return b.completedJobsWithClient - a.completedJobsWithClient;
+            }
+            const rankA = Number.isFinite(a.rankPosition) ? a.rankPosition : Number.MAX_SAFE_INTEGER;
+            const rankB = Number.isFinite(b.rankPosition) ? b.rankPosition : Number.MAX_SAFE_INTEGER;
+            return rankA - rankB;
+        });
+
+        res.json({
+            postedJobs,
+            activeHiredJobs,
+            pendingJobs,
+            uniqueStudents: enrichedStudents,
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Failed to load client stats details" });
     }
 };

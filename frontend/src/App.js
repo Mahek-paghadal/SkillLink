@@ -13,7 +13,8 @@ import ResetPassword from "./pages/ResetPassword";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { isAuthenticated, getUserRole } from "./utils/auth";
 import Navbar from "./components/Navbar";
-import Profile from "./pages/Profile";
+import StudentProfile from "./pages/Profile";
+import ClientProfile from "./pages/ClientProfile";
 
 function App() {
   const getRedirectPath = () => {
@@ -21,6 +22,15 @@ function App() {
     const role = getUserRole();
     if (role === "student") return "/student/dashboard";
     if (role === "client") return "/client/dashboard";
+    if (role === "admin") return "/admin/dashboard";
+    return "/";
+  };
+
+  const getProfilePath = () => {
+    if (!isAuthenticated()) return "/";
+    const role = getUserRole();
+    if (role === "student") return "/student/profile";
+    if (role === "client") return "/client/profile";
     if (role === "admin") return "/admin/dashboard";
     return "/";
   };
@@ -106,15 +116,24 @@ function App() {
           }
         />
 
-        {/* Protected Profile Route */}
+        {/* Protected Profile Routes */}
         <Route
-          path="/profile"
+          path="/student/profile"
           element={
-            <ProtectedRoute allowedRoles={["student", "client", "admin"]}>
-              <Profile />
+            <ProtectedRoute allowedRoles={["student"]}>
+              <StudentProfile />
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/client/profile"
+          element={
+            <ProtectedRoute allowedRoles={["client"]}>
+              <ClientProfile />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/profile" element={<Navigate to={getProfilePath()} replace />} />
 
         {/* Fallback - redirect based on role */}
         <Route path="*" element={<Navigate to={getRedirectPath()} replace />} />

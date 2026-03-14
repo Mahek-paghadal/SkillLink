@@ -25,6 +25,8 @@ const {
     getClientHistory,
     archiveClientJob,
     clearClientHistory,
+    getClientStats,
+    getClientStatsDetails,
     submitClientReview,
 } = require("../controllers/job.controllers");
 
@@ -54,6 +56,8 @@ router.post("/", protect, allowRoles("client"), createJob);
 router.get("/my", protect, allowRoles("client"), getClientJobs);
 router.get("/history", protect, allowRoles("client"), getClientHistory);
 router.post("/history/clear", protect, allowRoles("client"), clearClientHistory);
+router.get("/stats", protect, allowRoles("client"), getClientStats);
+router.get("/stats/details", protect, allowRoles("client"), getClientStatsDetails);
 router.put("/:jobId", protect, allowRoles("client"), updateJob);
 router.post("/:jobId/close", protect, allowRoles("client"), closeJob);
 router.post("/:jobId/archive", protect, allowRoles("client"), archiveClientJob);

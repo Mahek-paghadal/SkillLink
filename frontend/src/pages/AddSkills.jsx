@@ -53,7 +53,7 @@ const AddSkills = () => {
         setSaving(true);
         try {
             await updateStudentSkills(skills);
-            navigate("/profile", { replace: true });
+            navigate("/student/profile", { replace: true });
         } catch (e) {
             setError(e.response?.data?.message || "Failed to save skills");
         } finally {

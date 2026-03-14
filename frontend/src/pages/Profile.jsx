@@ -433,8 +433,8 @@ const Profile = () => {
         <div className="bg-inputBg dark:bg-darkCard rounded-2xl shadow-lg p-8 mb-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h2 className="text-3xl font-bold text-textDark dark:text-darkText mb-2">Profile</h2>
-              <p className="text-textDark/70 dark:text-darkText/70">Your account details</p>
+              <h2 className="text-3xl font-bold text-textDark dark:text-darkText mb-2">Student Profile</h2>
+              <p className="text-textDark/70 dark:text-darkText/70">Your student account details</p>
             </div>
             <button
               onClick={handleLogout}

@@ -80,6 +80,10 @@ const ClientDashboard = () => {
         };
     }, [jobs, applicantsByJob]);
 
+    const notifyJobsUpdated = () => {
+        window.dispatchEvent(new Event("jobs-updated"));
+    };
+
     const resetForm = () => {
         setForm({
             title: "",
@@ -267,6 +271,7 @@ const ClientDashboard = () => {
                                         await createJob(payload);
                                     }
                                     await fetchJobs();
+                                    notifyJobsUpdated();
                                     resetForm();
                                 } catch (e) {
                                     setError(e.response?.data?.message || "Failed to save job");
@@ -333,6 +338,7 @@ const ClientDashboard = () => {
                                             onClick={async () => {
                                                 await deleteJob(job._id);
                                                 await fetchJobs();
+                                                notifyJobsUpdated();
                                                 setApplicantsByJob((prev) => {
                                                     const next = { ...prev };
                                                     delete next[job._id];
@@ -348,6 +354,7 @@ const ClientDashboard = () => {
                                             onClick={async () => {
                                                 await closeJob(job._id);
                                                 await fetchJobs();
+                                                notifyJobsUpdated();
                                             }}
                                             className="text-primary font-semibold"
                                         >
@@ -437,6 +444,7 @@ const ClientDashboard = () => {
                                                                                 [job._id]: res.data,
                                                                             }));
                                                                             await fetchJobs();
+                                                                            notifyJobsUpdated();
                                                                         }}
                                                                         className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-secondary transition"
                                                                     >

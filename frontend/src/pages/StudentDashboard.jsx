@@ -210,7 +210,7 @@ const StudentDashboard = () => {
                                     style={{ width: `${stats?.profileCompletion || 0}%` }}
                                 />
                             </div>
-                            <Link to="/profile" className="mt-4 inline-block text-primary font-semibold text-sm">
+                            <Link to="/student/profile" className="mt-4 inline-block text-primary font-semibold text-sm">
                                 Complete profile
                             </Link>
                         </div>
@@ -688,7 +688,7 @@ const StudentDashboard = () => {
 
                 {/* Actions */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6" data-aos="fade-up">
-                    <Link to="/profile" className="bg-inputBg dark:bg-darkCard rounded-2xl p-6 border border-light/60 dark:border-darkBorder hover:shadow-md transition">
+                    <Link to="/student/profile" className="bg-inputBg dark:bg-darkCard rounded-2xl p-6 border border-light/60 dark:border-darkBorder hover:shadow-md transition">
                         <h4 className="font-semibold text-lg text-textDark dark:text-darkText">Build your skill profile</h4>
                         <p className="text-textDark/60 dark:text-darkText/60 text-sm mt-2">Add skills, availability, and portfolio.</p>
                     </Link>
