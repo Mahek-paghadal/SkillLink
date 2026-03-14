@@ -11,7 +11,9 @@ const {
     getProfile,
     logout,
     uploadProfileImage,
-    removeProfileImage
+    removeProfileImage,
+    getPreferences,
+    updatePreferences
 } = require("../controllers/auth.controllers");
 
 const {protect} = require("../middleware/auth.middleware");
@@ -41,6 +43,9 @@ router.post("/reset-password" , resetPassword);
 
 router.get("/profile" , protect , getProfile);
 router.post("/logout" , protect,logout);
+
+router.get("/preferences", protect, getPreferences);
+router.put("/preferences", protect, updatePreferences);
 
 router.post(
     "/profile-image",

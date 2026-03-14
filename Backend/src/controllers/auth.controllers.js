@@ -8,6 +8,7 @@ const sendEmail = require("../utils/sendEmail");
 const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
+const mongoose = require("mongoose");
 
 /// signup controller
 
@@ -280,5 +281,70 @@ exports.logout = async (req, res) => {
         res.json({ message: "Logout successful. Please login again" });
     } catch (error) {
         res.status(500).json({ message: "server error" });
+    }
+};
+
+exports.getPreferences = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId).select("preferences");
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        const prefs = user.preferences || {};
+        res.json({
+            theme: prefs.theme || "system",
+            savedJobIds: prefs.savedJobIds || [],
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+exports.updatePreferences = async (req, res) => {
+    try {
+        const { theme, savedJobIds } = req.body || {};
+        const updates = {};
+
+        if (typeof theme === "string") {
+            const normalized = theme.toLowerCase();
+            if (!['light', 'dark', 'system'].includes(normalized)) {
+                return res.status(400).json({ message: "Invalid theme" });
+            }
+            updates["preferences.theme"] = normalized;
+        }
+
+        if (Array.isArray(savedJobIds)) {
+            const normalizedIds = Array.from(
+                new Set(
+                    savedJobIds
+                        .map((id) => String(id))
+                        .filter((id) => mongoose.Types.ObjectId.isValid(id))
+                )
+            ).map((id) => new mongoose.Types.ObjectId(id));
+            updates["preferences.savedJobIds"] = normalizedIds;
+        }
+
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({ message: "No valid updates provided" });
+        }
+
+        const user = await User.findByIdAndUpdate(
+            req.user.userId,
+            { $set: updates },
+            { new: true, select: "preferences" }
+        );
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        const prefs = user.preferences || {};
+        res.json({
+            theme: prefs.theme || "system",
+            savedJobIds: prefs.savedJobIds || [],
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Server error" });
     }
 };

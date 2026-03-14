@@ -47,6 +47,13 @@ export const logoutUser = () =>
 export const getProfile = () =>
     API.get("/auth/profile");
 
+/// preferences
+export const getPreferences = () =>
+    API.get("/auth/preferences");
+
+export const updatePreferences = (payload) =>
+    API.put("/auth/preferences", payload);
+
 /// forgot password
 export const forgotPassword = (data) =>
     API.post("/auth/forgot-password", data);

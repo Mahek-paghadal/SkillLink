@@ -10,21 +10,7 @@ import {
     getStudentHistory,
 } from "../api/jobApi";
 import { getStudentOverview } from "../api/studentApi";
-
-const SAVED_JOBS_KEY = "skilllink.savedJobs";
-
-const readSavedJobs = () => {
-    try {
-        const raw = localStorage.getItem(SAVED_JOBS_KEY);
-        return raw ? JSON.parse(raw) : [];
-    } catch (error) {
-        return [];
-    }
-};
-
-const writeSavedJobs = (ids) => {
-    localStorage.setItem(SAVED_JOBS_KEY, JSON.stringify(ids));
-};
+import { getPreferences, updatePreferences } from "../api/authApi";
 
 const StudentJobs = () => {
     const navigate = useNavigate();
@@ -40,7 +26,7 @@ const StudentJobs = () => {
     const [levelFilter, setLevelFilter] = useState("all");
     const [tagFilters, setTagFilters] = useState([]);
     const [showSavedOnly, setShowSavedOnly] = useState(false);
-    const [savedJobIds, setSavedJobIds] = useState(readSavedJobs());
+    const [savedJobIds, setSavedJobIds] = useState([]);
     const [visibleJobsCount, setVisibleJobsCount] = useState(8);
     const [visibleApplicationsCount, setVisibleApplicationsCount] = useState(4);
     const [visibleHistoryCount, setVisibleHistoryCount] = useState(4);
@@ -106,11 +92,21 @@ const StudentJobs = () => {
             }
         };
 
+        const fetchPreferences = async () => {
+            try {
+                const res = await getPreferences();
+                setSavedJobIds(res.data?.savedJobIds || []);
+            } catch (error) {
+                setSavedJobIds([]);
+            }
+        };
+
         Promise.all([
             fetchOverview(),
             fetchJobs(),
             fetchApplications(),
             fetchHistory(),
+            fetchPreferences(),
         ]).finally(() => setLoading(false));
     }, [navigate]);
 
@@ -119,8 +115,10 @@ const StudentJobs = () => {
         const jobIds = new Set(jobs.map((job) => job._id));
         const nextSaved = savedJobIds.filter((id) => jobIds.has(id));
         if (nextSaved.length !== savedJobIds.length) {
-            writeSavedJobs(nextSaved);
             setSavedJobIds(nextSaved);
+            updatePreferences({ savedJobIds: nextSaved }).catch(() => {
+                // ignore update errors
+            });
         }
     }, [jobs, savedJobIds]);
 
@@ -247,7 +245,9 @@ const StudentJobs = () => {
             const next = prev.includes(jobId)
                 ? prev.filter((id) => id !== jobId)
                 : [...prev, jobId];
-            writeSavedJobs(next);
+            updatePreferences({ savedJobIds: next }).catch(() => {
+                // ignore update errors
+            });
             return next;
         });
     };

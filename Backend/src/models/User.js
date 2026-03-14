@@ -44,6 +44,14 @@ const userSchema = new mongoose.Schema(
         },
         resetPasswordToken: String,
         resetPasswordExpiry: Date,
+        preferences: {
+            theme: {
+                type: String,
+                enum: ["light", "dark", "system"],
+                default: "system",
+            },
+            savedJobIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Job" }],
+        },
     },
     { timestamps: true },
 );

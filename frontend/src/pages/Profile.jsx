@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { getProfile, logoutUser, uploadProfileImage, removeProfileImage } from "../api/authApi";
+import { getProfile, logoutUser, uploadProfileImage, removeProfileImage, getPreferences } from "../api/authApi";
 import { updateStudentSkills, getStudentOverview } from "../api/studentApi";
 import { getJobs } from "../api/jobApi";
 import { removeToken } from "../utils/auth";
@@ -42,9 +42,10 @@ const Profile = () => {
         setUser(res.data);
         if (res.data?.role === "student") {
           setSkills(res.data?.skills || []);
-          const [overviewRes, jobsRes] = await Promise.all([
+          const [overviewRes, jobsRes, prefsRes] = await Promise.all([
             getStudentOverview(),
             getJobs(),
+            getPreferences(),
           ]);
 
           const overview = overviewRes.data || {};
@@ -57,7 +58,7 @@ const Profile = () => {
             count: overview.stats?.reviewCount ?? 0,
           });
 
-          const savedIds = JSON.parse(localStorage.getItem("skilllink.savedJobs") || "[]");
+          const savedIds = prefsRes.data?.savedJobIds || [];
           if (savedIds.length > 0) {
             const saved = (jobsRes.data || []).filter((job) => savedIds.includes(job._id));
             setSavedJobs(saved);
