@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     archiveClientJob,
@@ -25,7 +25,7 @@ const ClientJobs = () => {
     });
     const navigate = useNavigate();
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setLoading(true);
         try {
             const [currentRes, pendingRes, historyRes] = await Promise.all([
@@ -41,11 +41,11 @@ const ClientJobs = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [navigate]);
 
     useEffect(() => {
         loadData();
-    }, []);
+    }, [loadData]);
 
     useEffect(() => {
         setPage(1);

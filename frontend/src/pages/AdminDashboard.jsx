@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getProfile } from "../api/authApi";
 import {
     getStats,
     listUsers,
@@ -13,7 +12,6 @@ import {
 } from "../api/adminApi";
 
 const AdminDashboard = () => {
-    const [user, setUser] = useState(null);
     const [stats, setStats] = useState(null);
     const [users, setUsers] = useState([]);
     const [jobs, setJobs] = useState([]);
@@ -24,14 +22,12 @@ const AdminDashboard = () => {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [profileRes, statsRes, usersRes, jobsRes, appsRes] = await Promise.all([
-                    getProfile(),
+                const [statsRes, usersRes, jobsRes, appsRes] = await Promise.all([
                     getStats(),
                     listUsers(),
                     listJobs(),
                     listApplications(),
                 ]);
-                setUser(profileRes.data);
                 setStats(statsRes.data);
                 setUsers(usersRes.data);
                 setJobs(jobsRes.data);
